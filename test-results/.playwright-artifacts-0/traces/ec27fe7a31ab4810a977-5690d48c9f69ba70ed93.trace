@@ -1,0 +1,11 @@
+{"version":10,"type":"context-options","origin":"library","browserName":"chromium","playwrightVersion":"1.65.0","options":{"baseURL":"http://127.0.0.1:4178","viewport":{"width":1280,"height":800},"isMobile":false},"platform":"win32","wallTime":1794167494073,"monotonicTime":3939.737,"sdkLanguage":"javascript","testIdAttributeName":"data-testid","channel":"chrome","title":"demo-mode.spec.ts:8 › public full demo runs capture and inference without the Pi"}
+{"type":"before","callId":"uhld@48","startTime":3952.16,"class":"BrowserContext","method":"newPage","params":{}}
+{"type":"event","time":4158.24,"class":"BrowserContext","method":"page","params":{"pageId":"page@af99baec0d87bf5ccedcdd46ebd350d9"}}
+{"type":"after","callId":"uhld@48","endTime":4158.503,"result":{"page":"<Page>"}}
+{"type":"before","callId":"uhld@50","startTime":4163.566,"title":"Route requests","class":"Page","method":"setNetworkInterceptionPatterns","params":{"patterns":[{"glob":"**/auth/v1/health"}]}}
+{"type":"after","callId":"uhld@50","endTime":4166.247}
+{"type":"before","callId":"uhld@52","startTime":4169.465,"class":"Frame","method":"goto","params":{"url":"/","waitUntil":"load"}}
+{"type":"frame-snapshot","snapshot":{"callId":"uhld@52","phase":"before","pageId":"page@af99baec0d87bf5ccedcdd46ebd350d9","frameId":"frame@190e2152443cfb4e0cdf4067c2ff2ec5","frameUrl":"about:blank","html":["HTML",{},["HEAD",{},["BASE",{"href":"about:blank"}]],["BODY"]],"viewport":{"width":1280,"height":800},"timestamp":4173.268,"wallTime":1794167494307,"collectionTime":1.0999999940395355,"resourceOverrides":[],"isMainFrame":true}}
+{"type":"log","callId":"uhld@52","time":4175.536,"message":"navigating to \"http://127.0.0.1:4178/\", waiting until \"load\""}
+{"type":"screencast-frame","pageId":"page@af99baec0d87bf5ccedcdd46ebd350d9","file":"screencast/page@af99baec0d87bf5ccedcdd46ebd350d9-1794167494525.jpeg","width":1280,"height":800,"timestamp":4392.052,"frameSwapWallTime":1794167494508.084}
+{"type":"screencast-frame","pageId":"page@af99baec0d87bf5ccedcdd46ebd350d9","file":"screencast/page@af99baec0d87bf5ccedcdd46ebd350d9-1794167494778.jpeg","width":1280,"height":800,"timestamp":4645.327,"frameSwapWallTime":1794167494771.961}

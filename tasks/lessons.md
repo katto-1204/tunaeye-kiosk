@@ -46,3 +46,5 @@
 - A Pi hotspot connection does not prove internet or Supabase availability. Treat navigator.onLine as network connectivity only; keep cloud sync manual and preserve pending records when DNS or cloud authentication fails.
 
 - Offline sync feedback must describe waiting for internet, identify captured images as saved locally until verified synced, and announce confirmed internet recovery without treating a Wi-Fi event as cloud availability.
+
+- When a request says “demo mode,” verify whether it means a complete hardware-free product walkthrough rather than a single screen or a visual scenario selector. Keep the end-to-end entry point explicit and test it from the public landing page through completion.

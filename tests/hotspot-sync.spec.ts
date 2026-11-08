@@ -66,7 +66,7 @@ test('hotspot DNS failure preserves pending records and syncs only on request', 
   expect(await page.evaluate(() => localStorage.getItem('tunaeye-records'))).toBe(original)
   await page.getByRole('button', { name: 'Understood' }).click()
   await page.getByRole('button', { name: 'Start grading', exact: true }).click()
-  await expect(page.getByRole('heading', { name: 'What are you grading?' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: /Fish weight/i })).toBeVisible()
   await page.goto('/admin')
   for (const [index, digit] of ['1', '2', '3', '4'].entries()) await page.getByLabel(`PIN digit ${index + 1}`).fill(digit)
   await page.getByRole('button', { name: 'Verify and continue' }).click()

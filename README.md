@@ -84,6 +84,8 @@ Open **http://localhost:3000**
 
 | Command | Result |
 | --- | --- |
+| `npm run dev:demo` | Full hardware-free demo with simulated camera and inference |
+| `npm run build:demo` then `npm run preview` | Production demo bundle |
 | `npm run build` then `npm run preview` | Production build |
 | `npx vercel` | HTTPS deploy (`dist` + SPA fallback) |
 

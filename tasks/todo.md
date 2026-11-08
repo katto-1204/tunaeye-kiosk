@@ -1,5 +1,31 @@
 # Plan
 
+## Full offline demo discoverability (2026-11-09)
+
+- [x] Confirm the public landing page exposes a full demo entry point.
+- [x] Keep demo inference and sample capture simulated across the complete grading flow.
+- [x] Expose persistent demo status and outcome controls while grading.
+- [ ] Verify the full demo path from landing through completion in Playwright.
+
+### Review
+
+The demo is a full workflow mode: it uses local samples and simulated model responses, so Raspberry Pi camera and inference hardware are not required. The public CTA now says “Try full demo · no Pi”; the kiosk keeps a visible Demo mode bar with the three presentation outcomes.
+
+## Grading workflow V2 (2026-11-09)
+
+- [x] Record the kiosk map in `CODEBASE.md`.
+- [x] Grade sashibo core first. Accept at 80% and go to one receipt.
+- [x] Below 80%, capture a tail cut. Blend when the tail cut is also at 80% or above.
+- [x] Below 80% on both, require an expert grade, then print.
+- [x] Add `npm run dev:demo` with three presentation outcomes.
+- [x] Verify the new path and the existing kiosk checks in the browser.
+
+### Workflow V2 review
+
+Sashibo at or above 80% opens one receipt. Below 80% asks for a tail cut, then blends the two score vectors. Both below 80% require the expert PIN and then print. Browser checks passed for those three paths, demo-mode lockout, upload, the full grade-to-receipt session, print failure, the thermal slip, weight entry, and tablet overlap at 1024×600 and 800×1280. The hotspot sync check stayed skipped because this run had no mock Supabase URL. Physical camera, printer, and scale were not tested.
+
+## Previous plans
+
 ## Combined cinematic product demo with admin sync (2026-10-10)
 
 Scope: one new 120-second cut in the existing separate Remotion project. Preserve both accepted videos and production app. Blend the cinematic sample/brand visuals with the earlier demo's complete functional footage. Faster (+8%) natural narration, livelier original score, actual admin UI with isolated cloud fixtures visibly labeled.

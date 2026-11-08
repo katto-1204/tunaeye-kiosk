@@ -5,6 +5,22 @@ test.beforeEach(async ({page}) => {
   await page.route('**/auth/v1/health', route => route.fulfill({contentType: 'application/json', body: '{"name":"GoTrue"}'}))
 })
 
+test('public full demo runs capture and inference without the Pi', async ({page}) => {
+  test.skip(process.env.VITE_DEMO_MODE === 'true', 'The demo build starts in demo mode and uses a different entry state.')
+  await page.goto('/')
+  await page.getByRole('button', {name: 'Try full demo · no Pi'}).first().click()
+  await expect(page.getByRole('heading', {name: 'Fish weight'})).toBeVisible()
+  await page.getByRole('button', {name: '3', exact: true}).click()
+  await page.getByRole('button', {name: '0', exact: true}).click()
+  await page.getByRole('button', {name: 'Start capture'}).click()
+  await expect(page.getByRole('img', {name: 'Demo specimen preview'})).toBeVisible()
+  await page.getByRole('button', {name: 'Capture', exact: true}).click()
+  await expect(page.getByRole('heading', {name: 'Sashibo core · Grade A'})).toBeVisible()
+  await expect(page.getByText('96.3%', {exact: true})).toBeVisible()
+  await page.getByRole('button', {name: 'Print receipt'}).click()
+  await expect(page.getByRole('heading', {name: 'Print the receipt.'})).toBeVisible()
+})
+
 for (const setup of [
   {name: 'saved demo flag', stored: true, query: ''},
   {name: 'demo URL', stored: false, query: '?demo=1'},
@@ -39,8 +55,6 @@ for (const setup of [
     await expect(page.locator('.camera-demo-badge')).toHaveCount(0)
     expect(await page.evaluate(() => localStorage.getItem('tunaeye-demo-mode'))).toBeNull()
     await page.getByRole('button', {name: 'Capture', exact: true}).click()
-    await expect(page.getByRole('heading', {name: 'Use this image?'})).toBeVisible()
-    await page.getByRole('button', {name: 'Use Image', exact: true}).click()
     await expect(page.getByRole('heading', {name: 'Sashibo core · Grade C'})).toBeVisible()
     await expect(page.locator('.confidence')).toContainText('88.2%')
     expect(calls).toEqual(['snapshot', 'grade'])
