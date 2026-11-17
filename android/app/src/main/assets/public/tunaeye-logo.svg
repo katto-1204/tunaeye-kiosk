@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 192" role="img" aria-label="TunaEye chamber mark">
+  <rect width="256" height="192" rx="48" fill="#F5F7FA"/>
+  <g transform="translate(42 42) rotate(-7 86 54)">
+    <rect x="12" y="18" width="172" height="108" rx="42" fill="#fff" stroke="#2563EB" stroke-width="14"/>
+    <circle cx="98" cy="72" r="27" fill="#2563EB"/>
+    <circle cx="98" cy="72" r="13" fill="#F5F7FA"/>
+    <circle cx="153" cy="106" r="7" fill="#29A9E8"/>
+  </g>
+</svg>

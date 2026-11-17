@@ -1,0 +1,1 @@
+{"routes":[{"path":"/","title":"TunaEye Welcome"},{"path":"/select-role","title":"Select Role"},{"path":"/admin","title":"Admin Access"},{"path":"/kiosk/:screen","title":"TunaEye Kiosk"}]}
