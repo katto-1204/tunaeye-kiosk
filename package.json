@@ -8,7 +8,9 @@
   },
   "scripts": {
     "dev": "vite --host 0.0.0.0 --port 3000",
+    "dev:demo": "vite --host 0.0.0.0 --port 3000 --mode demo",
     "build": "tsc -b && vite build",
+    "build:demo": "tsc -b && vite build --mode demo",
     "build:pi": "tsc -b && vite build --mode pi",
     "preview": "vite preview --host 0.0.0.0 --port 3000",
     "build:android": "pnpm build && pnpm exec cap sync android",

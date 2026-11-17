@@ -546,7 +546,7 @@ test('printing failure stays on receipt and offers retry', async ({ page }) => {
     window.print = () => { throw new Error('Printer unavailable') }
   })
   await page.goto('/kiosk/print')
-  await page.getByRole('button', { name: /Print Sashibo core/ }).click()
+  await page.getByRole('button', { name: 'Print receipt' }).click()
   await expect(page.getByRole('dialog', { name: 'Printing failed' })).toBeVisible()
   await expect(page).toHaveURL(/\/kiosk\/print$/)
   await expect(page.getByRole('button', { name: 'Try again' })).toBeFocused()
@@ -579,8 +579,6 @@ test('uploaded image uses the same saved-evidence and Pi inference flow', async 
   await page.goto('/kiosk/camera')
   await expect(page.getByRole('button', { name: 'Upload image' })).toBeInViewport()
   await page.getByLabel('Upload specimen image').setInputFiles('public/assets/sashiboCoreFull.png')
-  await expect(page.getByRole('heading', { name: 'Use this image?' })).toBeVisible()
-  await page.getByRole('button', { name: 'Use Image' }).click()
   await expect(page.getByRole('heading', { name: 'Sashibo core · Grade B' })).toBeVisible()
   expect(gradeBody).toContain('sashibocore')
   expect(gradeBody).toContain('name="image"; filename="capture.png"')
@@ -629,9 +627,8 @@ test('completed grading session remains local and pending until cloud sync', asy
   // Camera screen
   await expect(page.getByRole('heading', { name: /Align the sample/i })).toBeVisible()
   await page.getByRole('button', { name: 'Capture' }).click()
+  await expect(page.getByRole('heading', { name: /Sashibo core · Grade/i })).toBeVisible({ timeout: 10000 })
 
-  // Review screen
-  await expect(page.getByRole('heading', { name: /Use this image/i })).toBeVisible({ timeout: 5000 })
   const evidence = await page.evaluate(async () => {
     const database = await new Promise<IDBDatabase>((resolve, reject) => {
       const request = indexedDB.open('tunaeye-offline', 1)
@@ -648,10 +645,6 @@ test('completed grading session remains local and pending until cloud sync', asy
   })
   expect(evidence).toHaveLength(1)
   expect(evidence[0]).toMatchObject({ sample: 'Sashibo core', fishId: 'Fish 1', syncState: 'pending' })
-  await page.getByRole('button', { name: 'Use Image' }).click()
-  
-  // Analysis screen -> Result screen
-  await expect(page.getByRole('heading', { name: /Sashibo core · Grade/i })).toBeVisible({ timeout: 10000 })
   await page.getByRole('button', { name: 'Manual override' }).click()
   const override = page.getByRole('dialog', { name: 'Manual override' })
   await expect(override).toBeVisible()
@@ -661,11 +654,7 @@ test('completed grading session remains local and pending until cloud sync', asy
   expect(overrideBox!.y + overrideBox!.height).toBeLessThanOrEqual(800)
   await expect(override.getByRole('button', { name: 'Unlock override' })).toBeInViewport()
   await override.getByRole('button', { name: 'Cancel' }).click()
-  await page.getByRole('button', { name: 'View results overview' }).click()
-  
-  // Overview screen -> Print
-  await expect(page.getByRole('heading', { name: /Review samples/i })).toBeVisible()
-  await page.getByRole('button', { name: /Print separate copies/i }).click()
+  await page.getByRole('button', { name: 'Print receipt' }).click()
   
   // Print screen -> Skip printing to complete
   await expect(page.getByRole('button', { name: 'Skip printing' })).toBeVisible({ timeout: 5000 })
@@ -708,7 +697,7 @@ test('58mm thermal printer receipt preview and print layout', async ({ page }) =
     localStorage.setItem('tunaeye-grader-name', 'Maria Santos')
   })
   await page.goto('/kiosk/print')
-  await expect(page.getByRole('heading', { name: /Print grading records|Print the next result/i })).toBeVisible({ timeout: 5000 })
+  await expect(page.getByRole('heading', { name: 'Print the receipt.' })).toBeVisible({ timeout: 5000 })
 
   // Verify 58mm thermal receipt preview & POS-58 chassis indicator
   const printerChassis = page.locator('.receipt-container-v2')

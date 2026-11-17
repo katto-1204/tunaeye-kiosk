@@ -300,11 +300,13 @@ export default function MarketingLanding({
   onNavigate,
   onInstall,
   onOpen,
+  onDemo,
 }: {
   page: MarketingPage
   onNavigate: (page: MarketingPage) => void
   onInstall: () => void
   onOpen: () => void
+  onDemo?: () => void
 }) {
   const [changelogOpen, setChangelogOpen] = useState(false)
 
@@ -340,7 +342,7 @@ export default function MarketingLanding({
       </div>
 
       {page === 'home' ? (
-        <Home onInstall={onInstall} onOpen={onOpen} onNavigate={navigate} onChangelog={() => setChangelogOpen(true)} />
+        <Home onInstall={onInstall} onOpen={onOpen} onDemo={onDemo} onNavigate={navigate} onChangelog={() => setChangelogOpen(true)} />
       ) : page === 'team' ? (
         <TeamPage onNavigate={navigate} onOpen={onOpen} />
       ) : (
@@ -383,11 +385,13 @@ export default function MarketingLanding({
 function Home({
   onInstall,
   onOpen,
+  onDemo,
   onNavigate,
   onChangelog,
 }: {
   onInstall: () => void
   onOpen: () => void
+  onDemo?: () => void
   onNavigate: (page: MarketingPage) => void
   onChangelog: () => void
 }) {
@@ -431,6 +435,7 @@ function Home({
             <button className="site-button site-button--primary" onClick={onOpen}>
               Start Grading <Arrow />
             </button>
+            {onDemo && <button className="site-button site-button--demo" onClick={onDemo}>Try full demo · no Pi <Arrow /></button>}
             <button className="site-button" onClick={() => onNavigate('features')}>
               Station Specs <Arrow />
             </button>
@@ -442,13 +447,13 @@ function Home({
         </div>
 
         <div className="site-hero__band">
-          <span>01. Capture Specimen</span>
+          <span>01. Weigh the fish</span>
           <i />
-          <span>02. Edge Neural Infer</span>
+          <span>02. Grade sashibo core</span>
           <i />
-          <span>03. Review &amp; Override</span>
+          <span>03. Tail cut only under 80%</span>
           <i />
-          <span>04. Receipt &amp; Cloud Sync</span>
+          <span>04. Print one receipt</span>
         </div>
       </section>
 
@@ -461,6 +466,7 @@ function Home({
             <p>Watch experts' visual traits become a guided capture, CNN assist, and reviewable record.</p>
             <div className="site-actions">
               <HeroVideoDialog videoSrc="/image.png" trigger={<span className="site-button site-button--primary">View Demo <Arrow /></span>} />
+              {onDemo && <button className="site-button site-button--demo" onClick={onDemo}>Try full demo · no Pi <Arrow /></button>}
             </div>
           </div>
           <div className="site-demo-video__visual">

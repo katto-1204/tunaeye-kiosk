@@ -1,5 +1,23 @@
 # Plan
 
+## Resolve interrupted pull conflicts (2026-11-17)
+
+Scope: resolve only the task-history and generated test-metadata conflicts from the existing pull. Preserve both task histories, local test metadata, incoming source changes and unrelated working files. No application/UI edits, commit, push or remote changes.
+
+- [x] Verify the explicit repository root, origin, merge state and conflict stages.
+- [x] Combine both task-history additions without discarding either side.
+- [x] Stage the two resolved conflict paths and verify no unmerged entries remain.
+- [x] Verify no new application changes were introduced and document the resulting merge state.
+
+Plan review: existing incoming grading changes and Android deletions belong to the already-started merge; resolving metadata must not silently revise them. Retaining generated test metadata does not certify a test run.
+
+### Conflict repair review
+
+- Removed only the task conflict markers and retained every nonblank line from both conflict stages. Kept the local generated `.last-run.json` unchanged and validated its JSON.
+- Staged only `tasks/todo.md` and `test-results/.last-run.json` for this repair; `git ls-files -u` is empty. The merge is resolved and ready for the user's commit, with no commit or push performed.
+- Staged `src/`, package files and tests match `MERGE_HEAD`; no unstaged changes exist in those paths. Incoming workflow and Android changes were not rewritten. Application/browser tests were not rerun for this metadata-only resolution.
+- Conflict-path whitespace checks passed. The full staged-tree whitespace check reports one pre-existing incoming blank line at EOF in `.agents/skills/write-swift/SKILL.md`; left unrelated skill content untouched.
+
 ## Landing content archive and codebase context (2026-11-17)
 
 Scope: documentation only. Archive the current public landing page before a possible redesign; map the existing application and record the supplied V2 workflow as a proposed requirement. Preserve all application logic, styles, assets, and existing work. Do not connect or replace the kiosk HTML yet.
@@ -18,6 +36,32 @@ Plan review: distinguish implemented behavior from requested future behavior, ca
 - `context.md` maps source modules, current routes/grading/state/storage/Pi/cloud/auth/pricing/printing, commands/tests and future HTML integration boundaries. Clearly separates today's 70% rule and separate sample grades from the unimplemented supplied 80% workflow; exactly 80% and grade fusion remain unspecified.
 - Local Chrome/Playwright probes verified home, all six linked public pages, Tail Cut criteria/evidence, four-entry changelog, and mobile 390px width. No application page errors or failed requests observed in successful probes; route/changelog/mobile probe also recorded no HTTP errors. Confirmed existing hidden workflow pipeline and absent public install fallback dialog; documented without fixes.
 - Only documentation was created/updated for this task. Preserved pre-existing changes in Pi hosting documentation, service worker, test-results metadata and `.claude/`. No app logic/UI edits, build, full regression suite, hardware/live cloud test, commit or deployment.
+
+## Full offline demo discoverability (2026-11-09)
+
+- [x] Confirm the public landing page exposes a full demo entry point.
+- [x] Keep demo inference and sample capture simulated across the complete grading flow.
+- [x] Expose persistent demo status and outcome controls while grading.
+- [ ] Verify the full demo path from landing through completion in Playwright.
+
+### Review
+
+The demo is a full workflow mode: it uses local samples and simulated model responses, so Raspberry Pi camera and inference hardware are not required. The public CTA now says “Try full demo · no Pi”; the kiosk keeps a visible Demo mode bar with the three presentation outcomes.
+
+## Grading workflow V2 (2026-11-09)
+
+- [x] Record the kiosk map in `CODEBASE.md`.
+- [x] Grade sashibo core first. Accept at 80% and go to one receipt.
+- [x] Below 80%, capture a tail cut. Blend when the tail cut is also at 80% or above.
+- [x] Below 80% on both, require an expert grade, then print.
+- [x] Add `npm run dev:demo` with three presentation outcomes.
+- [x] Verify the new path and the existing kiosk checks in the browser.
+
+### Workflow V2 review
+
+Sashibo at or above 80% opens one receipt. Below 80% asks for a tail cut, then blends the two score vectors. Both below 80% require the expert PIN and then print. Browser checks passed for those three paths, demo-mode lockout, upload, the full grade-to-receipt session, print failure, the thermal slip, weight entry, and tablet overlap at 1024×600 and 800×1280. The hotspot sync check stayed skipped because this run had no mock Supabase URL. Physical camera, printer, and scale were not tested.
+
+## Previous plans
 
 ## Combined cinematic product demo with admin sync (2026-10-10)
 
