@@ -1,4 +1,4 @@
-const CACHE = 'tunaeye-v6-pi-hosting'
+const CACHE = 'tunaeye-v9-dial-admin-offline'
 const IS_LOCAL_DEVELOPMENT = ['localhost', '127.0.0.1'].includes(self.location?.hostname ?? '')
 const APP_SHELL = [
   '/',
@@ -15,7 +15,13 @@ const APP_SHELL = [
 
 self.addEventListener('install', event => {
   event.waitUntil(
-    caches.open(CACHE).then(cache => cache.addAll(APP_SHELL)).then(() => self.skipWaiting())
+    caches.open(CACHE).then(async cache => {
+      await cache.addAll(APP_SHELL)
+      const root = await cache.match('/')
+      const html = await root.text()
+      const bundles = [...html.matchAll(/(?:src|href)="([^"]+\.(?:js|css))"/g)].map(match => match[1])
+      await cache.addAll(bundles)
+    }).then(() => self.skipWaiting())
   )
 })
 
@@ -39,15 +45,24 @@ self.addEventListener('fetch', event => {
   if (['/status', '/snapshot', '/stream', '/grade'].includes(url.pathname)) return
   if (url.pathname.includes('/@vite/') || url.pathname.includes('/@react-refresh') || url.pathname.includes('hot-update')) return
 
+  // Precached public assets must start immediately offline, including servers with Vary: Origin.
+  if (url.origin === self.location.origin && /^\/(assets|fonts)\//.test(url.pathname)) {
+    event.respondWith(caches.match(event.request, { ignoreVary: true }).then(cached => cached || fetch(event.request).then(response => {
+      if (response.ok) { const copy = response.clone(); event.waitUntil(caches.open(CACHE).then(cache => cache.put(event.request, copy))) }
+      return response
+    })))
+    return
+  }
+
   event.respondWith(
     fetch(event.request)
       .then(response => {
-        if (response.status === 200 && (response.type === 'basic' || response.type === 'cors')) {
+        if (response.status === 200 || response.type === 'opaque') {
           const copy = response.clone()
           caches.open(CACHE).then(cache => cache.put(event.request, copy))
         }
         return response
       })
-      .catch(() => caches.match(event.request).then(res => res || caches.match('/')))
+      .catch(() => caches.match(event.request, { ignoreVary: url.origin === self.location.origin }).then(res => res || caches.match('/')))
   )
 })

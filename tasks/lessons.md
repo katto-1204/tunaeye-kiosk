@@ -1,5 +1,7 @@
 # Lessons
 
+- When the user supplies a complete HTML interface and asks for its exact look, use that interface as the rendering source. Do not substitute a React approximation or retain the legacy UI under new styling; adapt only technical wiring and verify against the supplied file.
+
 - Cloud verification must compare JSON score keys and values without relying on property order; make Supabase browser fixtures return PostgreSQL-style reordered JSON and verify that changed values still fail safely.
 
 - At the target kiosk resolution, verify the final cascade and seeded real records: an empty dashboard can hide table-cell overlap, and a shared modal fallback class can accidentally impose modal dimensions inside table rows.

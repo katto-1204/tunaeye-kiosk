@@ -1,5 +1,34 @@
 # Plan
 
+## Exact UI follow-up: loading, modes, validation and admin (2026-11-18)
+
+- [x] Restore actual KiloThermalDial on startup and landing-to-kiosk transition; tablet auto-entry/fullscreen fallback.
+- [x] Add explicit persisted demo/live toggle and visible simulated status, preserving live Pi requests when off.
+- [x] Inspect frontend sample contract and prepare independent-validation proposal; user requested no production detector changes yet.
+- [x] Transfer admin record/settings/price/grader/device/audit capabilities into landing-style admin.
+- [x] Fix supplied HTML syntax/vendor diagnostics, test browser flows/tablets/offline and rebuild Pi release.
+
+Plan review: use supplied UI, not old screen rendering; fullscreen may require user gesture. Sample identity requires model evidence and cannot be inferred reliably from a filename or selected model alone. User explicitly authorizes demo toggle in Pi build; keep demo records out of operational/cloud data.
+
+Follow-up review: actual dial is mounted at both transitions; browser checks pass demo/live control, no demo Pi calls or operational records, admin PIN/grader CRUD/settings/search/pagination, tablet auto-entry, supplementary-tail and expert outcomes. Admin screenshot visually inspected after entrance animation. Production offline reload passes after precaching CSS/vendor scripts and serving cached public assets with safe same-origin Vary handling. TypeScript/Pi build and inline classic script parsing pass. First-tap fullscreen fallback is wired inside the tablet kiosk frame; real tablet fullscreen permissions remain hardware QA. No Pi backend was edited: SSH timed out, and the classifier/data/API/evidence-staging proposal is in `docs/SAMPLE_TYPE_VALIDATION_PROPOSAL.md`. Updated ZIP release is `tunaeye-pi-build-2026-11-18-updated.zip`; actual model/camera/printer, hosted email delivery and live cloud writes remain unverified.
+
+## Exact supplied HTML and Pi release (2026-11-18)
+
+Correction: use `new ui/index (4).html` itself, rather than approximating its visuals in the old React components. The app entry renders the supplied complete landing/embedded-kiosk document. Technical prototype behavior is bridged to existing domain/integration modules in `src/exact-ui.ts`.
+
+- [x] Replace the active rendering entry; preserve the supplied HTML, public sections, artwork, animation, layout and embedded kiosk presentation.
+- [x] Bridge real Pi stream/snapshot/grade, model-label preservation, existing V2 decisions and score-vector combination; disable prototype random inference and seeded history.
+- [x] Save evidence in IndexedDB and inference/override/price metadata locally before printing; connect manual Sync now to existing verified cloud synchronization.
+- [x] Keep PIN checks, explicit printing/skip, 15–200kg validation, upload validation and 58mm physical print styling.
+- [x] Verify exact UI core-to-receipt against development and built Pi assets; verify supplementary-tail and expert-override flows at 1024×600.
+- [x] Verify production service-worker-controlled offline reload and build the Pi transfer archive; integrity-check ZIP.
+- [ ] Migrate the full legacy React-specific browser suite and verify all admin/CRUD/auth edge cases against the exact interface.
+- [ ] Verify actual Pi camera/model, printer/tablet installation and live cloud writes on station hardware.
+
+Review: `npm run build:pi` passed; domain/integration modules have no diff. Exact-interface scripts passed core Grade C at 91% without deriving A from confidence, multipart image_type, local result preservation, receipt, supplementary-tail combined grade B and PIN override A preserving original predictions. The production Pi bundle passed the same core-to-receipt test using same-origin API fixtures. Trusted-loopback production shell reloaded with browser networking disabled after service-worker installation. No physical Pi connection was available. Full legacy regression migration/admin coverage and hardware/live-cloud verification remain explicitly outstanding.
+
+Release: `tunaeye-pi-build-2026-11-18.zip`, 7,183,897 bytes, ZIP integrity passed; SHA256 `44c46bb0b8508fcedf4927c53184285c705c112666b42ac5987c95a86579e043`. Transfer instructions and PWA secure-origin requirements: `docs/EXACT_UI_PI_RELEASE.md`. No commit, push or deployment performed.
+
 ## Integrate supplied landing and kiosk UI (2026-11-18)
 
 Scope: adapt `new ui/index (4).html` into the existing React application, preserving the currently implemented V2 grading decisions, Pi endpoint contracts, local persistence, overrides, pricing snapshots, manual verified cloud sync and printing. Keep reference assets and layout; replace prototype simulation/data with real state and handlers. Local implementation only; no commit or deployment.

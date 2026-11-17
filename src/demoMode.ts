@@ -86,6 +86,11 @@ export function isDemoMode() {
   return enabled
 }
 
+// Explicit kiosk control; never enabled by a failed camera or inference request.
+export function setKioskDemoMode(value: boolean) {
+  enabled = value
+}
+
 export function demoAssetPath(sample: SampleType, grade: Grade) {
   const prefix = sample === 'Tail cut' ? 'TAILCUT' : 'SASHIBOCORE'
   return `/DEMO_SAMPLES/${prefix}_${grade}.png`
