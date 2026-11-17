@@ -279,21 +279,28 @@ function WelcomeScreen({ onStart, onDemo, onInstall, onTutorial, onGoMain, insta
   return (
     <div className={`welcome-screen welcome-screen--v2 ${entered ? 'is-entered' : ''}`}>
       <div className="welcome-screen__bg" />
-      <div className="welcome-screen__content">
-        <div className="welcome-brand-hero">
-          <h1 className="welcome-brand-hero__title" style={{ color: '#ffffff' }}>TUNA<span style={{ color: '#3B8CFF' }}>EYE</span></h1>
-          <p className="welcome-brand-hero__sub" style={{ color: '#ffffff' }}>KIOSK</p>
-          <p className="welcome-brand-hero__tagline" style={{ color: 'rgba(255, 255, 255, 0.9)', fontSize: '20px', marginTop: '12px' }}>AI-Powered Automated Tuna Grading System</p>
+      <nav className="welcome-top-nav" aria-label="Kiosk welcome">
+        <Button variant="ghost" onClick={onGoMain} icon="back">Go to main page</Button>
+        <BrandMark />
+        <div className="welcome-tools">
+          {!installed && <Button variant="ghost" onClick={onInstall} icon="home">Install App</Button>}
+          <button className="icon-button" onClick={onTutorial} aria-label="Guided Tutorial"><Icon name="help" size={22} /></button>
+          <button className="icon-button" onClick={toggleFullscreen} aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}><Icon name={isFullscreen ? 'compress' : 'expand'} size={22} /></button>
         </div>
-        <div className="welcome-cta-group" style={{ marginTop: '32px' }}>
+      </nav>
+      <div className="welcome-screen__content">
+        <span className="welcome-station-pill">{localStorage.getItem('tunaeye-station') ?? 'TunaEye Station 01'}</span>
+        <div className="welcome-brand-hero">
+          <h1 className="welcome-brand-hero__title">Tuna<span>Eye</span></h1>
+          <p className="welcome-brand-hero__tagline">AI-Powered Automated Tuna Grading System</p>
+          <p className="welcome-brand-hero__support">Built on expert knowledge. Enhanced by computer vision.</p>
+        </div>
+        <div className="welcome-cta-group">
           <Button className="btn--hero welcome-cta-main" onClick={onStart} icon="arrow">Get started</Button>
           {onDemo && <Button className="welcome-cta-demo" onClick={onDemo} icon="spark">Live demo</Button>}
-          <Button variant="secondary" onClick={onGoMain} icon="home">Go to main page</Button>
-          {!installed && <Button variant="ghost" onClick={onInstall} icon="home" className="welcome-btn--install">Install App</Button>}
         </div>
       </div>
-      <button className="welcome-fullscreen-btn" onClick={toggleFullscreen} aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'} title={isFullscreen ? 'Fullscreen enabled' : 'Enter fullscreen'}><Icon name={isFullscreen ? 'compress' : 'expand'} size={18} /></button>
-      <button className="tutorial-fab tutorial-fab--glass" onClick={onTutorial} aria-label="Guided Tutorial"><Icon name="tutorial" size={20} /></button>
+      <div className="welcome-workflow-band"><span><b>01</b>Weigh the fish</span><span><b>02</b>Grade the sashibo core</span><span><b>03</b>Tail cut only under {ACCEPT_CONFIDENCE}%</span><span><b>04</b>Print one receipt</span></div>
     </div>
   )
 }
@@ -972,7 +979,7 @@ function WeightScreen({ selected, sameFish, weights, onWeight, onContinue, onBac
     </div>
   )
 }
-function CameraScreen({ sample, index, total, onCapture, onBack, onHelp }: { sample: SampleType; index: number; total: number; onCapture: (blob: Blob, previewUrl: string) => Promise<void>; onBack: () => void; onHelp?: () => void }) {
+function CameraScreen({ sample, index, total, weight, onCapture, onBack, onHelp }: { sample: SampleType; index: number; total: number; weight: string; onCapture: (blob: Blob, previewUrl: string) => Promise<void>; onBack: () => void; onHelp?: () => void }) {
   const uploadRef = useRef<HTMLInputElement>(null)
   const piSettings = getPiSettings()
   const demoPreview = isDemoMode() ? getDemoPreviewUrl(sample, index) : null
@@ -1010,7 +1017,31 @@ function CameraScreen({ sample, index, total, onCapture, onBack, onHelp }: { sam
     } catch (error) { console.error('[TunaEye] Uploaded image validation failed:', error); setCameraError('TunaEye could not read this image. Choose another file.') }
     finally { setBusy(null); if (uploadRef.current) uploadRef.current.value = '' }
   }
-  return <div className="screen-stack screen-stack--camera"><div className="camera-layout"><div className="live-camera live-camera--demo"><img src={demoPreview ?? streamUrl} crossOrigin={piSettings.mode === 'hosted-gateway' ? 'use-credentials' : undefined} alt={demoPreview ? 'Specimen preview' : 'Live Raspberry Pi USB camera preview'} onLoad={() => setCameraError('')} onError={() => { if (!demoPreview) setCameraError(piSettings.mode === 'hosted-gateway' ? 'Secure TunaEye gateway stream unavailable. Check gateway sign-in and CORS.' : 'Raspberry Pi camera stream is unavailable.') }} /><div className="target-corners"><i /><i /><i /><i /></div>{cameraError && <div className="camera-error" role="alert"><Icon name="camera" size={28} /><span>{cameraError}</span>{piSettings.configured && <Button variant="secondary" icon="refresh" onClick={() => { setCameraError(''); setStreamKey(key => key + 1) }}>Reconnect</Button>}</div>}</div><aside className="camera-aside"><span className="eyebrow">{sample === 'Tail cut' ? 'Supplementary sample' : `Main sample · ${index + 1} of ${total}`}</span><div className="sample-context"><SampleArt sample={sample} /><span><strong>{sample}</strong><small>Raspberry Pi USB camera</small></span></div><h1>Align the sample in the guide.</h1><p>{sample === 'Tail cut' ? `Sashibo core was under ${ACCEPT_CONFIDENCE}%. This tail cut decides whether the grade can be finished.` : 'Capture grades this image immediately. No extra confirm step.'}</p><input ref={uploadRef} className="camera-upload-input" type="file" accept="image/jpeg,image/png,image/webp" aria-label="Upload specimen image" onChange={event => void upload(event.target.files?.[0])} disabled={Boolean(busy)} />{busy === 'upload' ? <small className="camera-upload-note camera-upload-note--busy" role="status"><Spinner />Saving image…</small> : <small className="camera-upload-note" role="status">JPEG, PNG, or WebP · up to 10 MB</small>}</aside></div><BottomBar onBack={onBack} onHelp={onHelp} secondaryLabel={busy === 'upload' ? 'Uploading…' : 'Upload image'} secondaryLoading={busy === 'upload'} secondaryDisabled={Boolean(busy)} onSecondary={() => uploadRef.current?.click()} primary={() => void capture()} primaryLabel={busy === 'capture' ? 'Capturing…' : 'Capture'} primaryIcon="camera" primaryLoading={busy === 'capture'} primaryDisabled={Boolean(busy) || (!demoPreview && !piSettings.configured)} /></div>
+  return (
+    <div className="screen-stack screen-stack--camera">
+      <WorkflowStrip step={sample === 'Tail cut' ? 'tail' : 'sashibo'} />
+      <div className="camera-layout">
+        <div className={`live-camera ${demoPreview ? 'live-camera--demo' : ''}`}>
+          <img src={demoPreview ?? streamUrl} crossOrigin={piSettings.mode === 'hosted-gateway' ? 'use-credentials' : undefined} alt={demoPreview ? 'Specimen preview' : 'Live Raspberry Pi USB camera preview'} onLoad={() => setCameraError('')} onError={() => { if (!demoPreview) setCameraError(piSettings.mode === 'hosted-gateway' ? 'Secure TunaEye gateway stream unavailable. Check gateway sign-in and CORS.' : 'Raspberry Pi camera stream is unavailable.') }} />
+          <div className="camera-grid" aria-hidden="true" />
+          <div className="target-corners"><i /><i /><i /><i /></div>
+          <span className="camera-source-label"><span />{demoPreview ? 'Demo specimen' : 'Raspberry Pi camera'}</span>
+          {cameraError && <div className="camera-error" role="alert"><Icon name="camera" size={28} /><span>{cameraError}</span>{piSettings.configured && <Button variant="secondary" icon="refresh" onClick={() => { setCameraError(''); setStreamKey(key => key + 1) }}>Reconnect</Button>}</div>}
+        </div>
+        <aside className="camera-aside">
+          <span className="eyebrow">{sample === 'Tail cut' ? 'Supplementary sample' : `Main sample · ${index + 1} of ${total}`}</span>
+          <h1>{sample === 'Tail cut' ? <>Show the <em>tail cut</em> face</> : <>Place the <em>core</em> in the frame</>}</h1>
+          <p>{sample === 'Tail cut' ? `Sashibo core was under ${ACCEPT_CONFIDENCE}%. Capture the cut surface, centered in the guide.` : 'Lay it flat and centered, in even light. Capture grades this image immediately.'}</p>
+          <div className="camera-meta"><div><small>Sample</small><strong>{sample}</strong></div><div><small>Weight</small><strong>{weight || '—'} kg</strong></div></div>
+          <input ref={uploadRef} className="camera-upload-input" type="file" accept="image/jpeg,image/png,image/webp" aria-label="Upload specimen image" onChange={event => void upload(event.target.files?.[0])} disabled={Boolean(busy)} />
+          <button className="btn btn--primary reference-scan" aria-label={busy === 'capture' ? 'Capturing…' : 'Capture'} onClick={() => void capture()} disabled={Boolean(busy) || (!demoPreview && !piSettings.configured)} aria-busy={busy === 'capture'}>{busy === 'capture' ? <>Capturing… <Spinner /></> : <>Scan sample <Icon name="camera" size={24} /></>}</button>
+          <Button className="reference-upload" variant="secondary" onClick={() => uploadRef.current?.click()} disabled={Boolean(busy)} loading={busy === 'upload'} icon="camera">{busy === 'upload' ? 'Uploading…' : 'Upload image'}</Button>
+          <small className="camera-upload-note" role="status">{busy === 'upload' ? 'Saving image…' : 'JPEG, PNG, or WebP · up to 10 MB'}</small>
+        </aside>
+      </div>
+      <BottomBar onBack={onBack} onHelp={onHelp} />
+    </div>
+  )
 }
 function ReviewScreen({ sample, outcome, onRetake, onUse, onBack }: { sample: SampleType; outcome: DemoOutcome; onRetake: () => void; onUse: () => void; onBack: () => void }) { const valid = outcome === 'valid'; return <div className="screen-stack screen-stack--review"><div className="review-layout"><EvidenceFrame sample={sample} mode="sample" frozen /><aside className="review-aside"><span className={`review-badge review-badge--${outcome}`}>{valid ? <Icon name="check" size={17} /> : <Icon name="help" size={17} />}{valid ? 'Image saved' : outcome === 'uncertain' ? 'Check the image' : 'Retake recommended'}</span><h1>{valid ? 'Use this image?' : 'Let’s check the image.'}</h1>{!valid && <p>{outcome === 'uncertain' ? 'Review before continuing.' : 'Needs a clearer view inside the guide.'}</p>}<div className="review-actions"><Button variant="secondary" onClick={onRetake} icon="refresh">Retake</Button><Button onClick={onUse} icon="arrow">Use Image</Button></div></aside></div><BottomBar onBack={onBack} /></div> }
 function AnalysisScreen({ sample }: { sample: SampleType }) {
@@ -1034,6 +1065,10 @@ function AnalysisScreen({ sample }: { sample: SampleType }) {
 }
 function effectiveGrade(result: SampleResult | undefined): Grade | null { return result?.overrideGrade ?? result?.originalGrade ?? null }
 function ResultImage({ sample }: { sample: SampleType }) { return <img className="result-sample-image" src={capturedEvidence[sample] ?? (sample === 'Sashibo core' ? '/assets/sashiboCoreFull.png' : '/assets/tailCutFull.png')} alt={`Captured ${sample}`} /> }
+function ConfidenceGauge({ confidence }: { confidence: number | null }) {
+  const percentage = Math.min(100, Math.max(0, confidence ?? 0))
+  return <div className={`confidence-gauge ${isAccepted(confidence) ? 'is-accepted' : 'is-low'}`}><svg viewBox="0 0 120 120" aria-hidden="true"><circle cx="60" cy="60" r="50" fill="none" stroke="currentColor" strokeWidth="8" opacity=".12" /><circle cx="60" cy="60" r="50" fill="none" stroke="currentColor" strokeWidth="8" strokeLinecap="round" pathLength="100" strokeDasharray={`${percentage} 100`} transform="rotate(-90 60 60)" /></svg><strong>{confidence ?? '—'}%</strong></div>
+}
 function IndividualResultScreen({ decision, results, sample, weight, onPrint, onTail, onRetake, onOverride, onBack }: { decision: FinalDecision; results: Partial<Record<SampleType, SampleResult>>; sample: SampleType; weight: string; onPrint: () => void; onTail: () => void; onRetake: () => void; onOverride: () => void; onBack: () => void }) {
   const grade = decision.grade
   const pricing = priceSnapshot(grade ?? 'Invalid', weight)
@@ -1049,24 +1084,23 @@ function IndividualResultScreen({ decision, results, sample, weight, onPrint, on
   const tail = results['Tail cut']
   return (
     <div className="screen-stack screen-stack--result">
+      <WorkflowStrip step={decision.next === 'print' ? 'print' : decision.next === 'tail' ? 'tail' : 'sashibo'} />
       <div className={`decision-layout decision-layout--${decision.source}`}>
-        <div className="decision-copy">
-          <WorkflowStrip step={decision.next === 'print' ? 'print' : decision.next === 'tail' ? 'tail' : 'sashibo'} />
+        <div className="decision-side">
+          <div className="reference-evidence"><ResultImage sample="Sashibo core" /><span>Sashibo core evidence</span></div>
+          {tail && <div className="reference-evidence"><ResultImage sample="Tail cut" /><span>Tail cut evidence</span></div>}
+          <div className="result-badges"><span>{sashibo?.fishId ?? 'Fish 1'}</span><span>{weight || '—'} kg</span>{decision.source === 'expert' && <span className="override-badge">Expert reviewed</span>}</div>
+        </div>
+        <div className="decision-copy reference-decision-summary">
           <span className="eyebrow">{decision.source === 'expert' ? 'Expert grade' : decision.source === 'combined' ? 'Blended result' : decision.source === 'sashibo' ? 'Sashibo core accepted' : 'Next step'}</span>
-          {grade && <div className={`grade-letter grade-letter--${grade}`}>{grade}</div>}
+          {grade && decision.next === 'print' && <div className={`grade-letter grade-letter--${grade}`}>{grade}</div>}
           <h1>{heading}</h1>
           <p className="decision-detail">{decision.detail}</p>
           <p className="decision-next">{decision.next === 'print' ? 'Next: print one receipt for this fish.' : decision.next === 'tail' ? 'Next: capture a tail-cut sample.' : decision.next === 'override' ? 'Next: an expert sets the final grade.' : 'Next: retake this photo.'}</p>
-          <div className="decision-meters">
-            {sashibo && <div className={`confidence ${isAccepted(sashibo.originalConfidence) ? 'confidence--accepted' : 'confidence--low'}`}><div className="confidence__label"><span>Sashibo core</span><strong>{sashibo.originalConfidence ?? '—'}%</strong></div><div className="confidence__track"><span style={{ width: `${Math.min(sashibo.originalConfidence ?? 0, 100)}%` }} /></div></div>}
-            {tail && <div className={`confidence ${isAccepted(tail.originalConfidence) ? 'confidence--accepted' : 'confidence--low'}`}><div className="confidence__label"><span>Tail cut</span><strong>{tail.originalConfidence ?? '—'}%</strong></div><div className="confidence__track"><span style={{ width: `${Math.min(tail.originalConfidence ?? 0, 100)}%` }} /></div></div>}
-          </div>
-          {grade && <div className="result-price-summary"><span>Fish value</span><strong>{peso(pricing.amount)}</strong><small>{weight || '—'} kg · {peso(pricing.unitRatePerKg)}/kg</small></div>}
+          {grade && decision.next === 'print' && <div className="result-price-summary"><span>Total fish value</span><strong>{peso(pricing.amount)}</strong><small>{weight || '—'} kg · {peso(pricing.unitRatePerKg)}/kg</small></div>}
         </div>
-        <div className="decision-side">
-          <ResultImage sample="Sashibo core" />
-          {tail && <ResultImage sample="Tail cut" />}
-          <div className="result-badges"><span>{sashibo?.fishId ?? 'Fish 1'}</span><span>{weight || '—'} kg</span>{decision.source === 'expert' && <span className="override-badge">Expert reviewed</span>}</div>
+        <div className="decision-meters">
+          {[sashibo, tail].filter((result): result is SampleResult => Boolean(result)).map(result => <div className="reference-confidence-card" key={result.sample}><span>{result.sample}</span><ConfidenceGauge confidence={result.originalConfidence} /><small>Model prediction · {result.originalGrade ? `Grade ${result.originalGrade}` : 'Invalid'}</small></div>)}
           {decision.next === 'print' && <Button variant="secondary" onClick={onOverride} icon="settings">Manual override</Button>}
           {decision.next !== 'retake' && <Button variant="ghost" onClick={onRetake} icon="refresh">Retake {sample.toLowerCase()}</Button>}
         </div>
@@ -1565,7 +1599,7 @@ function App() {
       case 'association': return <AssociationScreen samples={selected} sameFish={session.sameFish} onSameFish={value => dispatch({ type: 'setSameFish', value })} onContinue={() => { if (selected.length === 1) dispatch({ type: 'setSameFish', value: 'same' }); go(canSkipTutorial ? 'weight' : 'tutorial') }} onBack={back} />
       case 'tutorial': return <TutorialScreen samples={selected} step={session.tutorialStep} onStep={step => dispatch({ type: 'setTutorialStep', step })} onContinue={() => session.tutorialStep < 2 ? dispatch({ type: 'setTutorialStep', step: session.tutorialStep + 1 }) : go('weight')} onBack={back} />
       case 'weight': return <WeightScreen selected={selected} sameFish={session.sameFish} weights={fishWeights} onWeight={(fishId, value) => dispatch({ type: 'setFishWeight', fishId, value })} onContinue={() => go('camera')} onBack={back} />
-      case 'camera': return <CameraScreen key={demoScenario} sample={sample} index={session.currentSampleIndex} total={selected.length} onCapture={capture} onBack={back} onHelp={() => setNoticeModal({ title: 'Camera Alignment Guide', message: 'Keep the sample still and fully visible inside the reticle.', items: ['Position the specimen flat within the frame corners', 'Avoid hand or finger shadows over the meat surface', 'Wait for autofocus to stabilize, then press Capture'], icon: 'camera' })} />
+      case 'camera': return <CameraScreen key={demoScenario} sample={sample} index={session.currentSampleIndex} total={selected.length} weight={weightForSample(session, sample)} onCapture={capture} onBack={back} onHelp={() => setNoticeModal({ title: 'Camera Alignment Guide', message: 'Keep the sample still and fully visible inside the reticle.', items: ['Position the specimen flat within the frame corners', 'Avoid hand or finger shadows over the meat surface', 'Wait for autofocus to stabilize, then press Capture'], icon: 'camera' })} />
       case 'review': return <ReviewScreen sample={sample} outcome={session.demoOutcome} onRetake={() => go('camera')} onUse={() => dispatch({ type: 'startAnalysis' })} onBack={back} />
       case 'analysis': return <AnalysisScreen sample={sample} />
       case 'individual-result': return <IndividualResultScreen decision={decisionFor(session)} results={session.results} sample={sample} weight={weightForSample(session, 'Sashibo core') || weightForSample(session, sample)} onPrint={() => { dispatch({ type: 'startPrinting' }); window.history.pushState({}, '', pathForScreen('print')) }} onTail={() => { dispatch({ type: 'requestTail' }); window.history.pushState({}, '', pathForScreen('camera')) }} onRetake={() => go('camera')} onOverride={() => setOverrideTarget(decisionFor(session).next === 'override' ? 'Tail cut' : sample)} onBack={back} />
@@ -1575,10 +1609,10 @@ function App() {
     }
   }
   if (booting) return <LoadingScreen />
-  if ((publicLandingRequested || (!installed && !webIntroDismissed)) && session.screen === 'welcome') return <ProductLanding page={marketingPage} onInstall={installApp} onOpen={() => { setPublicLandingRequested(false); setWebIntroDismissed(true) }} onDemo={demoCanStart() ? openLiveDemo : undefined} onNavigate={page => { setMarketingPage(page); window.history.pushState({}, '', page === 'home' ? '/' : `/${page}`) }} />
+  if ((publicLandingRequested || (!installed && !webIntroDismissed)) && session.screen === 'welcome') return <><ProductLanding page={marketingPage} onInstall={installApp} onOpen={() => { setPublicLandingRequested(false); setWebIntroDismissed(true) }} onDemo={demoCanStart() ? openLiveDemo : undefined} onNavigate={page => { setMarketingPage(page); window.history.pushState({}, '', page === 'home' ? '/' : `/${page}`) }} />{noticeModal && <NoticeModal notice={noticeModal} onClose={() => setNoticeModal(null)} />}</>
   const isLanding = session.screen === 'welcome'
   const showGraderHome = session.role === 'expert' && !['welcome', 'select-role', 'grader', 'grader-dashboard', 'complete'].includes(session.screen)
-  return <div className={`app-shell ${isLanding ? 'app-shell--landing' : ''}`}>{demoOn && !isLanding && <DemoControlBar scenario={demoScenario} onScenario={chooseDemoScenario} open={demoControlsOpen} onToggle={() => setDemoControlsOpen(value => !value)} />}<main className={`app-main app-main--${session.screen}`}>{renderScreen()}</main>{showGraderHome && <button className="grader-home-shortcut" onClick={requestGraderHome} aria-label="View grading history" title="View grading history"><Icon name="home" size={18} /></button>}{(isAndroidChrome() || isNativeAndroidKiosk()) && androidFullscreenLocked && <button className="android-fullscreen-lock" onClick={unlockAndroidFullscreen} aria-label="Disable fullscreen" title="Disable fullscreen"><Icon name="lock" size={12} /></button>}{noticeModal ? <NoticeModal notice={noticeModal} onClose={() => setNoticeModal(null)} /> : overrideTarget ? <OverrideModal sample={overrideTarget} result={session.results[overrideTarget]} onClose={() => setOverrideTarget(null)} onSave={(grade, reason) => { dispatch({ type: 'setOverride', sample: overrideTarget, grade, reason, actor: session.graderName || 'Guest grader', timestamp: new Date().toISOString() }); setOverrideTarget(null); dispatch({ type: 'startPrinting' }); window.history.pushState({}, '', pathForScreen('print')) }} /> : legalKind ? <LegalModal kind={legalKind} onClose={() => setLegalKind(null)} /> : tutorialOpen ? <TutorialModal onClose={() => setTutorialOpen(false)} /> : null}<InternetRecoveryToast active={installed && !booting && !isLanding} />{isCapturing && <div className="capture-toast" role="status"><span className="capture-toast__ring is-spinning"><Icon name="camera" size={22} /></span><span><strong>Saving image</strong><small>Hold still for a moment</small></span></div>}{isPrinting && <div className="capture-toast" role="status"><span className="capture-toast__ring is-spinning"><Icon name="printer" size={22} /></span><span><strong>Printing result</strong><small>Please wait</small></span></div>}{isInstalling && <div className="capture-toast" role="status"><span className="capture-toast__ring is-spinning"><Icon name="spark" size={22} /></span><span><strong>Installing TunaEye</strong><small>Waiting for the browser</small></span></div>}</div>
+  return <div className={`app-shell reference-kiosk ${isLanding ? 'app-shell--landing' : ''}`}>{demoOn && !isLanding && <DemoControlBar scenario={demoScenario} onScenario={chooseDemoScenario} open={demoControlsOpen} onToggle={() => setDemoControlsOpen(value => !value)} />}<main className={`app-main app-main--${session.screen}`}>{renderScreen()}</main>{showGraderHome && <button className="grader-home-shortcut" onClick={requestGraderHome} aria-label="View grading history" title="View grading history"><Icon name="home" size={18} /></button>}{(isAndroidChrome() || isNativeAndroidKiosk()) && androidFullscreenLocked && <button className="android-fullscreen-lock" onClick={unlockAndroidFullscreen} aria-label="Disable fullscreen" title="Disable fullscreen"><Icon name="lock" size={12} /></button>}{noticeModal ? <NoticeModal notice={noticeModal} onClose={() => setNoticeModal(null)} /> : overrideTarget ? <OverrideModal sample={overrideTarget} result={session.results[overrideTarget]} onClose={() => setOverrideTarget(null)} onSave={(grade, reason) => { dispatch({ type: 'setOverride', sample: overrideTarget, grade, reason, actor: session.graderName || 'Guest grader', timestamp: new Date().toISOString() }); setOverrideTarget(null); dispatch({ type: 'startPrinting' }); window.history.pushState({}, '', pathForScreen('print')) }} /> : legalKind ? <LegalModal kind={legalKind} onClose={() => setLegalKind(null)} /> : tutorialOpen ? <TutorialModal onClose={() => setTutorialOpen(false)} /> : null}<InternetRecoveryToast active={installed && !booting && !isLanding} />{isCapturing && <div className="capture-toast" role="status"><span className="capture-toast__ring is-spinning"><Icon name="camera" size={22} /></span><span><strong>Saving image</strong><small>Hold still for a moment</small></span></div>}{isPrinting && <div className="capture-toast" role="status"><span className="capture-toast__ring is-spinning"><Icon name="printer" size={22} /></span><span><strong>Printing result</strong><small>Please wait</small></span></div>}{isInstalling && <div className="capture-toast" role="status"><span className="capture-toast__ring is-spinning"><Icon name="spark" size={22} /></span><span><strong>Installing TunaEye</strong><small>Waiting for the browser</small></span></div>}</div>
 }
 
 export default App

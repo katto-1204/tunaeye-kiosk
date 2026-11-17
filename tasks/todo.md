@@ -1,5 +1,18 @@
 # Plan
 
+## Integrate supplied landing and kiosk UI (2026-11-18)
+
+Scope: adapt `new ui/index (4).html` into the existing React application, preserving the currently implemented V2 grading decisions, Pi endpoint contracts, local persistence, overrides, pricing snapshots, manual verified cloud sync and printing. Keep reference assets and layout; replace prototype simulation/data with real state and handlers. Local implementation only; no commit or deployment.
+
+- [ ] Map supplied design screens/assets/actions to current landing, kiosk and admin surfaces; record integration boundaries.
+- [ ] Integrate landing presentation with existing navigation/install/demo/entry callbacks and public content.
+- [ ] Integrate kiosk presentation with existing session, capture, inference, review, records, override and printing handlers.
+- [ ] Verify real Pi request contracts and error handling with browser fixtures, and probe physical Pi availability where reachable.
+- [ ] Verify navigation, full grading outcomes, authentication, CRUD/settings/sync and responsive layouts with Playwright; inspect screenshots/console/network.
+- [ ] Run existing browser suites, TypeScript and standard/Pi production builds; resolve regressions and document evidence/limits.
+
+Plan review: source-only presentation changes must not import prototype random grades or fake device statuses. Preserve domain/integration modules where possible, scope CSS to avoid legacy cascade interference, reuse supplied imagery, and keep hardware-free demo distinct from real Pi operation. Required tablet QA: 1024×600, 1280×800, 1366×768; include public mobile layout. No new business rules.
+
 ## Resolve interrupted pull conflicts (2026-11-17)
 
 Scope: resolve only the task-history and generated test-metadata conflicts from the existing pull. Preserve both task histories, local test metadata, incoming source changes and unrelated working files. No application/UI edits, commit, push or remote changes.

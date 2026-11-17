@@ -4,6 +4,7 @@ import App from './App'
 import './styles.css'
 import './product.css'
 import './site.css'
+import './reference-kiosk.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
