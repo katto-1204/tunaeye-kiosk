@@ -1,5 +1,24 @@
 # Plan
 
+## Landing content archive and codebase context (2026-11-17)
+
+Scope: documentation only. Archive the current public landing page before a possible redesign; map the existing application and record the supplied V2 workflow as a proposed requirement. Preserve all application logic, styles, assets, and existing work. Do not connect or replace the kiosk HTML yet.
+
+- [x] Inspect landing-page source, content, assets, styles, routes, and interactions.
+- [x] Scan application architecture and current grading/integration contracts.
+- [x] Write root `content.md` with the landing page's copy and structure.
+- [x] Write root `context.md` with verified codebase context and proposed workflow boundaries.
+- [x] Cross-check both documents against source and record verification results.
+
+Plan review: distinguish implemented behavior from requested future behavior, capture conditional/mobile content as well as visible sections, and document unknowns without changing runtime behavior. Browser tests are required if UI changes; this task changes documentation only.
+
+### Landing archive review
+
+- `content.md` archives all home sections, shared shell, public subpages, changelog, tab/carousel/FAQ/bio content, install handler copy, assets and responsive/animation rules. Source comparison found no missing nontrivial static JSX copy; long content strings were cross-checked as well.
+- `context.md` maps source modules, current routes/grading/state/storage/Pi/cloud/auth/pricing/printing, commands/tests and future HTML integration boundaries. Clearly separates today's 70% rule and separate sample grades from the unimplemented supplied 80% workflow; exactly 80% and grade fusion remain unspecified.
+- Local Chrome/Playwright probes verified home, all six linked public pages, Tail Cut criteria/evidence, four-entry changelog, and mobile 390px width. No application page errors or failed requests observed in successful probes; route/changelog/mobile probe also recorded no HTTP errors. Confirmed existing hidden workflow pipeline and absent public install fallback dialog; documented without fixes.
+- Only documentation was created/updated for this task. Preserved pre-existing changes in Pi hosting documentation, service worker, test-results metadata and `.claude/`. No app logic/UI edits, build, full regression suite, hardware/live cloud test, commit or deployment.
+
 ## Combined cinematic product demo with admin sync (2026-10-10)
 
 Scope: one new 120-second cut in the existing separate Remotion project. Preserve both accepted videos and production app. Blend the cinematic sample/brand visuals with the earlier demo's complete functional footage. Faster (+8%) natural narration, livelier original score, actual admin UI with isolated cloud fixtures visibly labeled.

@@ -23,6 +23,10 @@ The resulting `dist/` uses these same-origin endpoints:
 - `GET /stream`
 - `POST /grade`
 
+The current build also avoids service-worker caching on `localhost` and
+`10.42.0.1` development/diagnostic pages. This prevents an old hashed
+JavaScript bundle from producing a white screen after a rebuild.
+
 The normal `npm run build` remains the Vercel build. It never falls back from HTTPS to the Pi's HTTP address. Configure an authenticated `VITE_PI_GATEWAY_URL` as described in `docs/VERCEL_CAMERA_GATEWAY.md`, or the hosted PWA displays connection guidance.
 
 ## Transfer the build
@@ -75,6 +79,13 @@ After copying, restart the existing Flask service and open:
 ```text
 http://10.42.0.1:5000/
 ```
+
+If the browser still shows a white page after a redeploy, clear the old
+service worker and site data once, then reload:
+
+1. Open DevTools > Application > Storage.
+2. Click **Clear site data** and unregister the TunaEye service worker.
+3. Close the tab, reopen `http://10.42.0.1:5000/`, and use a hard reload.
 
 ## HTTP LAN limitations
 

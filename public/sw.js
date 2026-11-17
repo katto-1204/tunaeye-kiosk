@@ -1,4 +1,5 @@
-const CACHE = 'tunaeye-v5-pi-hosting'
+const CACHE = 'tunaeye-v6-pi-hosting'
+const IS_LOCAL_DEVELOPMENT = ['localhost', '127.0.0.1'].includes(self.location?.hostname ?? '')
 const APP_SHELL = [
   '/',
   '/manifest.webmanifest',
@@ -31,6 +32,10 @@ self.addEventListener('fetch', event => {
   if (event.request.cache === 'no-store') return
   const url = new URL(event.request.url)
   if (!['http:', 'https:'].includes(url.protocol)) return
+  if (IS_LOCAL_DEVELOPMENT) {
+    event.respondWith(fetch(event.request))
+    return
+  }
   if (['/status', '/snapshot', '/stream', '/grade'].includes(url.pathname)) return
   if (url.pathname.includes('/@vite/') || url.pathname.includes('/@react-refresh') || url.pathname.includes('hot-update')) return
 
