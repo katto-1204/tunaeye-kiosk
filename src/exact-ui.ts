@@ -23,9 +23,13 @@ let sessionId = createId(), order: number | null = null, capturing = false
 let tabletEntry = false
 const previews: Record<string, string> = {}
 const api = (w: Kiosk) => w.eval('({S,SC,go,R,toast,modal,api,RATE})')
-function history() {
+function history(graderName?: string) {
+  const target = graderName?.trim().toLowerCase()
   const groups = new Map<string, GradingRecord[]>()
-  for (const row of loadRecords()) groups.set(row.sessionId, [...(groups.get(row.sessionId) ?? []), row])
+  for (const row of loadRecords()) {
+    if (target && row.grader.trim().toLowerCase() !== target) continue
+    groups.set(row.sessionId, [...(groups.get(row.sessionId) ?? []), row])
+  }
   return [...groups.values()].map((rows, i) => {
     const core = rows.find(r => r.sample === 'Sashibo core') ?? rows[0], tail = rows.find(r => r.sample === 'Tail cut')
     return { id: core.id, ts: core.timestamp, w: parseFloat(core.weight), g: core.grade, loc: rows.every(r => r.transaction?.syncState === 'synced') ? 0 : 1, c: core.result?.originalConfidence, tl: tail?.result?.originalConfidence ?? null, n: core.grader, o: groups.size - i, amount: core.transaction?.amount, rate: core.transaction?.unitRatePerKg }
@@ -35,7 +39,8 @@ function persist(w: Kiosk) {
   const { S } = api(w), decision = decisionFor(session)
   const rows: GradingRecord[] = Object.values(session.results).map(result => {
     const grade = decision.next === 'print' ? decision.grade! : result!.originalGrade ?? 'Invalid'
-    return { id: `${sessionId}-${result!.sample === 'Tail cut' ? 2 : 1}`, sessionId, timestamp: S.captureTime ?? Date.now(), time: new Date().toLocaleTimeString(), grader: S.name, sample: result!.sample, fish: result!.fishId, weight: `${result!.weight} kg`, grade, status: result!.overrideGrade ? 'Override' : result!.status === 'valid' ? 'Complete' : result!.status, capturedImageId: `${sessionId}-${result!.sample === 'Tail cut' ? 2 : 1}`, result: { ...result! }, transaction: { currency: 'PHP', ...priceSnapshot(grade, result!.weight), syncState: 'pending' } }
+    const isDemo = result!.modelSource === 'demo'
+    return { id: `${sessionId}-${result!.sample === 'Tail cut' ? 2 : 1}`, sessionId, timestamp: S.captureTime ?? Date.now(), time: new Date().toLocaleTimeString(), grader: S.name, sample: result!.sample, fish: result!.fishId, weight: `${result!.weight} kg`, grade, status: result!.overrideGrade ? 'Override' : result!.status === 'valid' ? 'Complete' : result!.status, capturedImageId: isDemo ? undefined : `${sessionId}-${result!.sample === 'Tail cut' ? 2 : 1}`, result: { ...result! }, transaction: { currency: 'PHP', ...priceSnapshot(grade, result!.weight), syncState: 'pending' } }
   })
   saveRecords([...rows, ...loadRecords().filter(row => row.sessionId !== sessionId)])
 }
@@ -142,8 +147,10 @@ const runtime = {
     try {
       const result = await syncPendingRecords()
       if (result.synced > 0) localStorage.setItem('tunaeye-last-sync', new Date().toISOString())
-      S.hist = history(); R()
-      const msg = result.firstError ?? (result.synced > 0 ? `Synced: ${result.synced} record${result.synced === 1 ? '' : 's'} verified in cloud` : 'Synced: all records up to date')
+      S.hist = history(S.name); R()
+      const msg = result.failed || result.waiting
+        ? `${result.synced ? `${result.synced} synced · ` : ''}${result.firstError ?? 'Some records remain pending.'}`
+        : (result.synced > 0 ? `Synced: ${result.synced} record${result.synced === 1 ? '' : 's'} verified in cloud` : 'Synced: all records up to date')
       toast(msg, result.failed || result.waiting ? 1 : 0)
     }
     catch (error) { toast(error instanceof Error ? error.message : 'Cloud sync unavailable.', 1) }
@@ -191,15 +198,16 @@ const runtime = {
     const sample = (key: SampleType) => { const result = session.results[key]; return result ? { grade: result.originalGrade ?? 'Invalid', confidence: result.originalConfidence } : undefined }
     return printThermalReceipt(w, { station: S.cfg.name, order: `TE_${String(S.order).padStart(4, '0')}`, grader: S.name, timestamp: S.captureTime ?? Date.now(), weight: S.w, grade, unitRatePerKg: prices.unitRatePerKg ?? null, total: prices.amount, core: sample('Sashibo core'), tail: sample('Tail cut'), demo: isDemoMode() })
   },
-  finish(w: Kiosk) { const { S, go } = api(w); S.hist = history(); go('done') },
+  finish(w: Kiosk) { const { S, go } = api(w); S.hist = history(S.name); go('done') },
   attach(w: Kiosk) {
     const { S, SC, RATE } = api(w)
     setKioskDemoMode(localStorage.getItem('tunaeye-explicit-demo') === 'true')
     S.cfg.demo = isDemoMode(); S.cfg.name = localStorage.getItem('tunaeye-station') ?? S.cfg.name
-    S.cfg.url = getPiSettings().apiUrl; S.cfg.ep = '/grade'; S.hist = history(); Object.assign(RATE, loadPriceSchedule())
+    S.cfg.url = getPiSettings().apiUrl; S.cfg.ep = '/grade'; S.hist = history(S.name); Object.assign(RATE, loadPriceSchedule())
     const original = w.eval('R')
       ; (w as any).R = () => {
         S.cfg.demo = isDemoMode()
+        if (S.scr === 'dash') S.hist = history(S.name)
         original()
         const d = w.document, decision = decisionFor(session), sync = d.getElementById('sy')
         if (S.scr === 'pin') {
@@ -361,16 +369,19 @@ export function launchExactUI(showBootDial = true) {
       try { child.eval('S'); runtime.attach(child); (child as any).__tunaeyeAttached = true } catch (error) { console.error('Kiosk initialization failed', error) }
     }
   }, 100)
+  let lastAutoSyncAt = 0
   const autoSyncIfReachable = async () => {
     if (!isSupabaseConfigured() || !navigator.onLine) return
+    if (Date.now() - lastAutoSyncAt < 60_000) return
     if (!loadRecords().some(record => record.transaction?.syncState !== 'synced')) return
+    lastAutoSyncAt = Date.now()
     if (!await checkCloudConnection()) return
-    const result = await syncPendingRecords().catch(() => null)
+    const result = await syncPendingRecords({ limit: 10 }).catch(() => null)
     if (result && result.synced > 0) {
       localStorage.setItem('tunaeye-last-sync', new Date().toISOString())
       const child = frame.contentDocument?.querySelector<HTMLIFrameElement>('#kiosk-wrap iframe')?.contentWindow as Kiosk | null
       if (child && (child as any).__tunaeyeAttached) {
-        try { const { S, R } = api(child); S.hist = history(); R() } catch { }
+        try { const { S, R } = api(child); S.hist = history(S.name); R() } catch { }
       }
     }
   }

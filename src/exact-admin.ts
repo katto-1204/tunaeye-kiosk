@@ -1,6 +1,6 @@
 import { loadRecords, saveRecords, type GradingRecord } from './gradingRecords'
 import { getCapturedEvidence, deleteCapturedEvidence } from './evidenceStorage'
-import { fetchCloudRecords, syncPriceSchedule } from './cloudSync'
+import { fetchCloudRecords, syncPendingRecords, syncPriceSchedule } from './cloudSync'
 import { loadPriceSchedule, peso } from './pricing'
 import { capturePiImage, checkPiHealth, getPiSettings } from './piClient'
 import { getSupabase, isSupabaseConfigured, sendAdminMagicLink } from './supabase'
@@ -10,7 +10,7 @@ import { isDemoMode } from './demoMode'
 import { mountTechnicalPanel } from './exact-technical'
 
 type Context = { refresh: () => void; notice: (text: string, error?: boolean) => void; setDemo: (enabled: boolean) => void }
-type View = { query: string; page: number; cloud: GradingRecord[] }
+type View = { query: string; page: number; cloud: GradingRecord[]; lastCloudSyncAt?: number; syncingCloud?: boolean }
 const views = new WeakMap<Window, View>()
 const esc = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!))
 const read = <T>(key: string, fallback: T): T => { try { return JSON.parse(localStorage.getItem(key) ?? 'null') ?? fallback } catch { return fallback } }
@@ -27,6 +27,16 @@ export function enhanceAdmin(w: Window, context: Context) {
   if (!d.getElementById('exact-admin-style')) { const e = d.createElement('style'); e.id = 'exact-admin-style'; e.textContent = style; d.head.append(e) }
   let view = views.get(w); if (!view) { view = { query: '', page: 1, cloud: [] }; views.set(w, view) }
   const v = view, combined = new Map<string, GradingRecord>()
+  if (navigator.onLine && isSupabaseConfigured() && !v.syncingCloud && Date.now() - (v.lastCloudSyncAt ?? 0) >= 60_000) {
+    v.syncingCloud = true; v.lastCloudSyncAt = Date.now()
+    void (async () => {
+      try {
+        await syncPendingRecords({ limit: 10 }).catch(() => null)
+        v.cloud = await fetchCloudRecords(200)
+        if (w.document.body.contains(body)) enhanceAdmin(w, context)
+      } catch { } finally { v.syncingCloud = false }
+    })()
+  }
   for (const record of [...v.cloud, ...loadRecords()]) combined.set(record.id, record)
   const records = [...combined.values()].sort((a, b) => b.timestamp - a.timestamp)
   const graders = read<string[]>('tunaeye-graders', ['Maria Santos', 'Jose Dela Cruz', 'Ana Mae Lim'])
@@ -105,11 +115,15 @@ export function enhanceAdmin(w: Window, context: Context) {
   bind('ea-settings-save', () => { const endpoint = value('ea-api'), camera = value('ea-camera'); for (const url of [endpoint, camera]) if (url && !/^https?:\/\/[^\s]+$/i.test(url)) return tell('Use a valid HTTP or HTTPS device URL.', true); if (!value('ea-station')) return tell('Enter a station name.', true); localStorage.setItem('tunaeye-station', value('ea-station')); localStorage.setItem('tunaeye-rpi-url', endpoint); localStorage.setItem('tunaeye-camera-url', camera); localStorage.setItem('tunaeye-model-name', value('ea-model')); Object.assign(state.cfg, { name: value('ea-station'), url: endpoint, model: value('ea-model') }); audit('Settings updated', 'Station and Pi connection settings saved'); tell('Station settings saved') })
   bind('ea-pi-test', async () => { const status = get('ea-device-status'); if (status) status.textContent = 'Checking Pi…'; try { const result = await checkPiHealth(); if (status) status.textContent = `Pi reachable · ${result.model ?? result.service ?? 'Status endpoint answered'}`; audit('Pi connection test', 'Status endpoint reachable') } catch (e) { if (status) status.textContent = e instanceof Error ? e.message : 'Pi unavailable'; audit('Pi connection test', 'Pi unavailable') } })
   bind('ea-camera-test', async () => { const status = get('ea-device-status'); if (status) status.textContent = 'Checking snapshot…'; try { const image = await capturePiImage(); if (status) status.textContent = `Camera returned ${image.size.toLocaleString()} image bytes`; audit('Camera diagnostic', 'Snapshot returned') } catch (e) { if (status) status.textContent = e instanceof Error ? e.message : 'Camera unavailable' } })
-  bind('ea-retention', () => { const removable = loadRecords().filter(row => row.transaction?.syncState === 'synced').sort((a, b) => b.timestamp - a.timestamp).slice(200); const modal = (w as Window & { eval: (s: string) => any }).eval('modal'); modal({ title: 'Clean verified local copies?', body: `${removable.length} older verified synced records can be removed locally. Pending and failed evidence remains. Cloud copies are unchanged.`, ok: 'Clean local copies', onOk: async () => {
-    const removed = new Set<string>()
-    try { for (const row of removable) { if (row.capturedImageId) await deleteCapturedEvidence(row.capturedImageId); removed.add(row.id) } }
-    catch { tell('Some local copies could not be removed. Pending evidence is unchanged.', true) }
-    saveRecords(loadRecords().filter(row => !removed.has(row.id))); audit('Local retention', `${removed.size} verified synced local copies removed`); context.refresh(); tell(`${removed.size} verified synced local copies removed`)
-  } }) })
+  bind('ea-retention', () => {
+    const removable = loadRecords().filter(row => row.transaction?.syncState === 'synced').sort((a, b) => b.timestamp - a.timestamp).slice(200); const modal = (w as Window & { eval: (s: string) => any }).eval('modal'); modal({
+      title: 'Clean verified local copies?', body: `${removable.length} older verified synced records can be removed locally. Pending and failed evidence remains. Cloud copies are unchanged.`, ok: 'Clean local copies', onOk: async () => {
+        const removed = new Set<string>()
+        try { for (const row of removable) { if (row.capturedImageId) await deleteCapturedEvidence(row.capturedImageId); removed.add(row.id) } }
+        catch { tell('Some local copies could not be removed. Pending evidence is unchanged.', true) }
+        saveRecords(loadRecords().filter(row => !removed.has(row.id))); audit('Local retention', `${removed.size} verified synced local copies removed`); context.refresh(); tell(`${removed.size} verified synced local copies removed`)
+      }
+    })
+  })
   bind('ea-auth', () => { const modal = d.createElement('div'); modal.className = 'ovl'; modal.innerHTML = `<section class="sheet ea" role="dialog" aria-modal="true" aria-label="Hosted admin sign-in"><h2>Cloud admin sign-in</h2><p>Use the administrator email registered in Supabase.</p><label>Email<input id="ea-auth-email" type="email" autocomplete="email"></label><div class="ea-row">${button('ea-auth-send', 'Email sign-in link', true)}${button('ea-auth-close', 'Close')}</div><p id="ea-auth-status" role="status"></p></section>`; d.getElementById('stage')?.append(modal); modal.querySelector<HTMLButtonElement>('#ea-auth-close')!.onclick = () => modal.remove(); modal.querySelector<HTMLButtonElement>('#ea-auth-send')!.onclick = async () => { const b = modal.querySelector<HTMLButtonElement>('#ea-auth-send')!, status = modal.querySelector('#ea-auth-status')!; b.disabled = true; try { await sendAdminMagicLink((modal.querySelector('#ea-auth-email') as HTMLInputElement).value); status.textContent = 'Check your inbox and open the sign-in link on this tablet.' } catch (e) { status.textContent = e instanceof Error ? e.message : 'Sign-in link unavailable.' } finally { b.disabled = false } } })
 }
