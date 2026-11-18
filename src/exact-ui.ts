@@ -22,6 +22,9 @@ let session: Session = { ...initialSession }
 let sessionId = createId(), order: number | null = null, capturing = false
 let tabletEntry = false
 const previews: Record<string, string> = {}
+let activeCameraSource = typeof localStorage !== 'undefined' ? (localStorage.getItem('tunaeye-camera-source') || 'pi') : 'pi'
+let localStream: MediaStream | null = null
+const stopLocalStream = () => { if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null } }
 const api = (w: Kiosk) => w.eval('({S,SC,go,R,toast,modal,api,RATE})')
 function history(graderName?: string) {
   const target = graderName?.trim().toLowerCase()
@@ -96,12 +99,36 @@ const runtime = {
   },
   async camera(w: Kiosk) {
     const { toast } = api(w), settings = getPiSettings(), doc = w.document
-    const video = doc.getElementById('vid')
-    if (!video) return
+    const current = doc.getElementById('vid')
+    if (!current) return
+    if (activeCameraSource !== 'pi') {
+      stopLocalStream()
+      try {
+        if (!navigator.mediaDevices?.getUserMedia) throw new Error('Browser camera requires HTTPS or localhost. Use Pi camera (:8080) over HTTP.')
+        const videoConstraint: MediaTrackConstraints = activeCameraSource === 'device'
+          ? { width: { ideal: 1280 }, height: { ideal: 720 } }
+          : { deviceId: { exact: activeCameraSource }, width: { ideal: 1280 }, height: { ideal: 720 } }
+        localStream = await navigator.mediaDevices.getUserMedia({ video: videoConstraint, audio: false })
+        const video = doc.createElement('video'); video.id = 'vid'; video.autoplay = true; video.playsInline = true; video.muted = true
+        video.style.cssText = 'width:100%;height:100%;object-fit:cover'
+        current.replaceWith(video)
+        video.srcObject = localStream
+        await video.play().catch(() => { })
+        const track = localStream.getVideoTracks()[0], trSettings = track?.getSettings?.() ?? {}
+        const label = doc.getElementById('vres')
+        if (label) label.textContent = trSettings.width && trSettings.height ? `${trSettings.width}×${trSettings.height}` : (track?.label || 'Device camera')
+        const b = doc.getElementById('sh') as HTMLButtonElement | null; if (b) b.disabled = false
+        return
+      } catch (error) {
+        stopLocalStream()
+        toast(error instanceof Error ? error.message : 'Could not open selected camera.', 1)
+      }
+    }
+    stopLocalStream()
     const image = doc.createElement('img'); image.id = 'vid'; image.alt = 'Live Raspberry Pi camera'; image.style.cssText = 'width:100%;height:100%;object-fit:contain'
     if (settings.mode === 'hosted-gateway') image.crossOrigin = 'use-credentials'
-    image.onerror = () => toast('Pi camera unavailable. Check station Wi-Fi and connection settings.', 1)
-    video.replaceWith(image)
+    image.onerror = () => toast('Pi camera unavailable. Check station Wi-Fi or switch camera on the side.', 1)
+    current.replaceWith(image)
     if (settings.configured) { image.src = settings.streamUrl; const b = doc.getElementById('sh') as HTMLButtonElement; if (b) b.disabled = false }
     else toast('Configure the authenticated HTTPS gateway or open the Pi-hosted kiosk.', 1)
     const label = doc.getElementById('vres'); if (label) label.textContent = settings.mode === 'pi-local' ? 'Pi camera' : 'Pi stream'
@@ -115,7 +142,22 @@ const runtime = {
     let temporaryId: string | undefined
     try {
       if (file && (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || !file.size || file.size > 10 * 1024 * 1024)) throw new Error('Choose a JPEG, PNG or WebP image up to 10 MB.')
-      const blob = file ?? await capturePiImage(sample)
+      let blob: Blob
+      if (file) {
+        blob = file
+      } else {
+        const videoEl = w.document.getElementById('vid')
+        if (activeCameraSource !== 'pi' && videoEl instanceof w.HTMLVideoElement && videoEl.videoWidth > 0) {
+          const canvas = w.document.createElement('canvas')
+          canvas.width = videoEl.videoWidth; canvas.height = videoEl.videoHeight
+          canvas.getContext('2d')!.drawImage(videoEl, 0, 0)
+          const captured = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.92))
+          if (!captured || captured.size === 0) throw new Error('Could not capture frame from selected camera.')
+          blob = captured
+        } else {
+          blob = await capturePiImage(sample)
+        }
+      }
       const bitmap = await createImageBitmap(blob); bitmap.close()
       const id = `${sessionId}-${key === 'tail' ? 2 : 1}`
       S.captureTime ??= Date.now()
@@ -502,11 +544,29 @@ export function launchExactUI(showBootDial = true) {
     }
   }
   frame.addEventListener('load', prepareLanding)
+  const showKioskFallback = (child: Kiosk, message: string) => {
+    const doc = child.document
+    if (!doc?.body || doc.getElementById('te-kiosk-fallback')) return
+    const card = doc.createElement('div')
+    card.id = 'te-kiosk-fallback'
+    card.style.cssText = 'position:fixed;inset:0;display:grid;place-items:center;padding:24px;background:#f4f7ff;font-family:Inter,system-ui,sans-serif;color:#182842'
+    card.innerHTML = `<section style="width:min(460px,94%);padding:28px;border-radius:24px;background:#fff;border:1px solid #dce6f6;box-shadow:0 20px 50px -18px rgba(18,59,112,.22);text-align:center"><h2 style="margin:0 0 8px;font-size:22px">Kiosk could not start</h2><p style="margin:0 0 18px;font-size:14px;color:#5b6b84;overflow-wrap:anywhere"></p><div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap"><button type="button" id="te-fb-back" style="height:44px;padding:0 18px;border-radius:999px;border:1px solid #d7e2f4;background:#f5f8ff;color:#182842;font:600 14px Inter,system-ui,sans-serif;cursor:pointer">Back to landing</button><button type="button" id="te-fb-reload" style="height:44px;padding:0 20px;border-radius:999px;border:0;background:#2563ff;color:#fff;font:600 14px Inter,system-ui,sans-serif;cursor:pointer">Reload kiosk</button></div></section>`
+    card.querySelector('p')!.textContent = message
+    card.querySelector<HTMLButtonElement>('#te-fb-reload')!.onclick = () => window.location.reload()
+    card.querySelector<HTMLButtonElement>('#te-fb-back')!.onclick = () => { try { (frame.contentWindow as any)?.closeKiosk?.() } catch { window.location.reload() } }
+    doc.body.replaceChildren(card)
+  }
   const timer = setInterval(() => {
     prepareLanding()
     const child = frame.contentDocument?.querySelector<HTMLIFrameElement>('#kiosk-wrap iframe')?.contentWindow as Kiosk | null
     if (child && !(child as any).__tunaeyeAttached) {
-      try { child.eval('S'); runtime.attach(child); (child as any).__tunaeyeAttached = true } catch (error) { console.error('Kiosk initialization failed', error) }
+      if (child.document.readyState !== 'complete') return
+      try { child.eval('S'); runtime.attach(child); (child as any).__tunaeyeAttached = true }
+      catch (error) {
+        (child as any).__tunaeyeAttached = true
+        console.error('Kiosk initialization failed', error)
+        showKioskFallback(child, error instanceof Error ? error.message : 'Kiosk initialization failed.')
+      }
     }
   }, 100)
   let lastAutoSyncAt = 0
