@@ -22,4 +22,3 @@ create policy "station graders read own or admin" on public.station_graders
   for select to authenticated using (
     user_id = auth.uid() or exists (select 1 from public.profiles where user_id = auth.uid() and role = 'admin')
   );
-
