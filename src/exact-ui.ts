@@ -272,6 +272,44 @@ const runtime = {
     if (tabletEntry) w.document.addEventListener('pointerdown', () => {
       if (!document.fullscreenElement) void document.documentElement.requestFullscreen?.().catch(() => { })
     }, { once: true, capture: true })
+    if (!w.document.getElementById('te-net-pill')) {
+      const pill = w.document.createElement('div')
+      pill.id = 'te-net-pill'
+      pill.setAttribute('aria-live', 'polite')
+      pill.style.cssText = 'position:fixed;right:12px;bottom:10px;z-index:25;pointer-events:none;display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;font:700 11px/1.2 Inter,system-ui,sans-serif;background:rgba(255,255,255,.92);color:#182842;border:1px solid rgba(18,59,112,.14);box-shadow:0 2px 8px rgba(18,59,112,.10);backdrop-filter:blur(6px)'
+      w.document.body.append(pill)
+      const barsSvg = (bars: number, color: string) => `<svg width="14" height="12" viewBox="0 0 14 12" aria-hidden="true">${[0, 1, 2].map(i => `<rect x="${i * 5}" y="${8 - i * 3}" width="3" height="${4 + i * 3}" rx="1" fill="${i < bars ? color : '#cbd5e1'}"/>`).join('')}</svg>`
+      const refreshNetPill = async () => {
+        if (!pill.isConnected) return
+        const settings = getPiSettings()
+        let piOk = false, piMs = 999
+        if (settings.configured) {
+          const started = performance.now()
+          try {
+            const res = await fetch(`${settings.apiUrl}/status`, { cache: 'no-store', credentials: settings.mode === 'hosted-gateway' ? 'include' : 'omit', signal: AbortSignal.timeout(2500) })
+            piOk = res.ok
+            piMs = Math.round(performance.now() - started)
+          } catch { piOk = false }
+        }
+        const cloudOk = navigator.onLine && isSupabaseConfigured() ? await checkCloudConnection().catch(() => false) : false
+        const connRtt = (navigator as unknown as { connection?: { rtt?: number } }).connection?.rtt ?? 120
+        const rtt = piOk ? piMs : connRtt
+        const bars = !navigator.onLine && !piOk ? 0 : rtt < 100 ? 3 : rtt < 300 ? 2 : 1
+        const color = piOk ? '#16a34a' : cloudOk ? '#2563eb' : navigator.onLine ? '#d97706' : '#dc2626'
+        const label = piOk
+          ? (cloudOk ? 'TunaRpi · Inference ON · Cloud ready' : 'TunaRpi · Saved locally · Inference ON')
+          : cloudOk
+            ? 'Wi-Fi · Cloud ready'
+            : (navigator.onLine ? 'Wi-Fi · Saved locally' : 'Offline · Saved locally')
+        pill.innerHTML = `${barsSvg(bars, color)}<span>${label}</span>`
+      }
+      void refreshNetPill()
+      const netTimer = w.setInterval(() => { void refreshNetPill() }, 15_000)
+      const onNet = () => { void refreshNetPill() }
+      window.addEventListener('online', onNet)
+      window.addEventListener('offline', onNet)
+      w.addEventListener('pagehide', () => { w.clearInterval(netTimer); window.removeEventListener('online', onNet); window.removeEventListener('offline', onNet) }, { once: true })
+    }
   },
 }
 
