@@ -2,6 +2,8 @@
 
 ## Updated follow-up release
 
+The latest update removes the floating bottom-right demo/live chip entirely. Switch modes in grader entry or **Admin → Settings → Grading operating mode**. Overview and Devices now include operational diagnostics: Pi/model/service metadata and request latency, decoded camera snapshots, effective endpoint configuration, cloud gateway reachability, queue/error details, browser quota and evidence/cache checks. All probes require an explicit click, never perform record uploads, and distinguish untested/unavailable services from successful checks. Tests cover success and failure using isolated API fixtures; actual station hardware and cloud writes are not claimed verified.
+
 Use `tunaeye-pi-build-2026-11-18-updated.zip` for the latest build. It restores the actual KiloThermalDial on startup and landing-to-kiosk transition, adds an explicit persisted demo/live switch, tablet kiosk auto-entry, and a landing-style admin with records/evidence/search/pagination/CSV, grader management, price/settings persistence, device diagnostics, audit and cloud sign-in controls. Tablets attempt fullscreen automatically and retry on the first kiosk tap if the browser requires a gesture.
 
 Live mode remains the default. Explicit demo mode is now available in the Pi build because the user requested that control; demo inference does not call the Pi and simulated results/evidence do not enter operational records or manual cloud sync. Mode changes are blocked during an unfinished graded session. The switch is visibly labeled simulated versus live.

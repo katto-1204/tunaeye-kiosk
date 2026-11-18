@@ -106,7 +106,7 @@ const runtime = {
   },
   async sync(w: Kiosk) {
     const { S, R, toast } = api(w)
-    try { const result = await syncPendingRecords(); S.hist = history(); R(); toast(result.firstError ?? `${result.synced} records verified in cloud`, result.failed || result.waiting ? 1 : 0) }
+    try { const result = await syncPendingRecords(); if (result.synced > 0) localStorage.setItem('tunaeye-last-sync', new Date().toISOString()); S.hist = history(); R(); toast(result.firstError ?? `${result.synced} records verified in cloud`, result.failed || result.waiting ? 1 : 0) }
     catch (error) { toast(error instanceof Error ? error.message : 'Cloud sync unavailable.', 1) }
   },
   override(w: Kiosk) {
@@ -151,7 +151,6 @@ const runtime = {
       }
       const override = d.getElementById('ov'); if (override) override.onclick = () => runtime.override(w)
       d.querySelectorAll<HTMLElement>('#dmsw,[data-t="demo"]').forEach(e => { e.onclick = () => runtime.mode(w, !isDemoMode()); e.setAttribute('aria-checked', String(isDemoMode())) })
-      const mode = d.createElement('button'); mode.className = 'xbn bo'; mode.id = 'station-mode'; mode.textContent = isDemoMode() ? 'Demo mode · simulated' : 'Live mode · Raspberry Pi'; mode.setAttribute('role', 'switch'); mode.setAttribute('aria-label', 'Demo mode'); mode.setAttribute('aria-checked', String(isDemoMode())); mode.onclick = () => runtime.mode(w, !isDemoMode()); mode.style.cssText = 'position:absolute;right:24px;bottom:8px;z-index:40;font-size:12px;height:32px'; d.getElementById('stage')!.append(mode)
       if (S.scr === 'receipt') { const skip = d.getElementById('sk'); if (skip) skip.onclick = () => api(w).modal({ title: 'Skip printing?', body: 'The record remains saved locally.', ok: 'Skip receipt', onOk: () => runtime.finish(w) }) }
       if (S.scr === 'admin' && S.tab === 'devices') {
         d.querySelectorAll('.bd.ok').forEach(e => e.textContent = 'Not verified')
@@ -166,7 +165,7 @@ const runtime = {
         } else { localStorage.setItem('tunaeye-station', S.cfg.name); localStorage.setItem('tunaeye-rpi-url', S.cfg.url); localStorage.setItem('tunaeye-model-name', S.cfg.model); api(w).toast('Station settings saved') }
       }
       if (S.scr === 'admin') {
-        enhanceAdmin(w, { refresh: () => api(w).R(), notice: (text, error) => api(w).toast(text, error ? 1 : 0) })
+        enhanceAdmin(w, { refresh: () => api(w).R(), notice: (text, error) => api(w).toast(text, error ? 1 : 0), setDemo: value => runtime.mode(w, value) })
         d.querySelectorAll('.as > div').forEach(el => { if (el.textContent?.includes('System online')) el.textContent = navigator.onLine ? 'Network available · Pi not checked' : 'Network offline · records retained' })
       }
     }

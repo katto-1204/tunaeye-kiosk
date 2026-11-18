@@ -1,5 +1,37 @@
 # Plan
 
+## Logout confirmation button fix (2026-11-18)
+
+- [x] Reproduce the clipped green logout label and trace the conflicting style.
+- [x] Isolate the destructive-action class from record-grade badge styles.
+- [x] Verify single-line white label, Cancel and confirmed logout on desktop/tablet; build and refresh Pi ZIP.
+
+Scope: shared destructive confirmation styling only; preserve logout behavior, records and all other existing work.
+
+Review: reproduced the green, two-line label caused by the generic `.dg` record badge selector. Renamed the destructive modal class to `xpr--danger`, leaving record badge styles and logout handlers unchanged. Playwright verified white single-line label, Cancel retaining admin, and confirmation returning to welcome at 1280x800 and 1024x600, with no page errors or failed requests using a local-font fixture for blocked Google Fonts. Both screenshots reviewed. TypeScript and Pi build passed; deployment ZIP refreshed. Camera-flow inspection confirmed the active live source is Pi `/stream` and `/snapshot`, without browser getUserMedia; no camera behavior changed.
+
+## Operational admin and floating-chip removal (2026-11-18)
+
+- [x] Remove the global bottom-right demo/live chip from the DOM; retain operating-mode controls in grader entry and Admin Settings.
+- [x] Add real manual diagnostics for Pi/model metadata, camera snapshot, cloud reachability, sync queue/errors and local storage/evidence.
+- [x] Verify technical success/failure states, no automatic uploads, chip absence in live/demo, settings toggle and tablet layout with browser tests; build and refresh Pi package.
+
+Scope: operational admin controls and requested chip removal. Keep grading/classification rules, local records, manual verified cloud sync and sample-validation proposal boundary intact. Never fabricate hardware readiness or unsupported telemetry.
+
+Review: deleted the floating chip's creation/append code. Explicit mode controls remain in identity entry and Admin Settings. Added `exact-technical.ts` to Overview/Devices: effective URLs/deployment, manually measured status latency/service/version/model/class metadata, decoded real snapshot size/MIME/dimensions/preview, independent cloud reachability, pending/failed/synced queues with stored errors/record IDs, quota/persistence/cache/secure-origin and referenced-evidence inspection. No automatic probes, record uploads, deletion or sync-state rewriting. Connection changes invalidate stale diagnostic results; sidebar reflects the latest Pi check. Last-sync time advances only when verified records actually synced.
+
+Browser fixtures passed at 1280×800 and 1024×600 for success/503 failure, model metadata, camera decode, missing evidence, cloud check, queue errors, settings toggle, and absence of the floating chip; zero remote writes and retained failed records asserted. Both screenshots reviewed. Existing dial/demo/admin CRUD/tablet and core-to-receipt scripts pass; TypeScript/Pi build pass. Physical hardware and live cloud writes remain untested. Pi ZIP refreshed; no commit/deployment.
+
+## Version-history dialog design (2026-11-18)
+
+- [x] Inspect the exact HTML changelog content and all open/close entry points.
+- [x] Design a landing-style release timeline with a featured latest release, readable history and accessible dialog controls.
+- [x] Verify desktop/mobile/short tablet scrolling, both entry points, keyboard/backdrop close, focus and page/network errors with Playwright; run grading smoke and Pi build.
+
+Scope: changelog presentation and dialog-specific behavior only. Preserve every release note, current release number, other modals and grading/Pi/storage/sync behavior. Use supplied HTML as rendering source; no new dependency or deployment.
+
+Review: redesigned the supplied HTML's Version History into a blue/serif header, featured latest-release card, four-release timeline, fixed footer/close controls, scrollable release body and mobile layout. All 13 existing notes and version/date values are preserved. Dialog has named accessible semantics, initial focus, focus loop, Escape/backdrop/button close, opener focus restoration and background scroll locking. `scripts/verify-version-history.cjs` passed at 1440×1000, 1024×600 and 390×844 with no page errors or failed local requests; all three screenshots visually inspected. Inline classic-script parsing and TypeScript/Pi production build passed. Existing exact-UI core-to-receipt smoke passed. Refreshed `tunaeye-pi-build-2026-11-18-updated.zip` and verified ZIP integrity. No business/inference changes, hardware/cloud testing, commit or deployment.
+
 ## Exact UI follow-up: loading, modes, validation and admin (2026-11-18)
 
 - [x] Restore actual KiloThermalDial on startup and landing-to-kiosk transition; tablet auto-entry/fullscreen fallback.

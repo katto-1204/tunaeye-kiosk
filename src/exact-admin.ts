@@ -6,8 +6,10 @@ import { capturePiImage, checkPiHealth, getPiSettings } from './piClient'
 import { getSupabase, isSupabaseConfigured, sendAdminMagicLink } from './supabase'
 import type { Grade } from './kioskState'
 import { createId } from './id'
+import { isDemoMode } from './demoMode'
+import { mountTechnicalPanel } from './exact-technical'
 
-type Context = { refresh: () => void; notice: (text: string, error?: boolean) => void }
+type Context = { refresh: () => void; notice: (text: string, error?: boolean) => void; setDemo: (enabled: boolean) => void }
 type View = { query: string; page: number; cloud: GradingRecord[] }
 const views = new WeakMap<Window, View>()
 const esc = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!))
@@ -52,6 +54,17 @@ export function enhanceAdmin(w: Window, context: Context) {
     default: return
   }
   body.innerHTML = `<div class="ea">${html}</div>`
+  const headings: Record<string, [string, string]> = { overview: ['Station operations', 'Local records, hardware diagnostics and cloud synchronization'], records: ['Grading records', 'Evidence, original model results and verified sync state'], devices: ['Hardware & API diagnostics', 'Check the Pi, model service, camera and cloud independently'], settings: ['Station configuration', 'Effective endpoints, operating mode and local retention'], logs: ['Audit log', 'Recorded configuration, diagnostic and operator events'] }
+  if (headings[state.tab]) { const [title, subtitle] = headings[state.tab]; const h = d.querySelector('.ah h1'), sub = d.querySelector('.ah .xm'); if (h) h.textContent = title; if (sub) sub.textContent = subtitle }
+  if (state.tab === 'overview' || state.tab === 'devices') {
+    const technical = d.createElement('div'); body.querySelector('.ea')!.prepend(technical); mountTechnicalPanel(w, technical)
+  }
+  if (state.tab === 'settings') {
+    const controls = d.createElement('section'); controls.className = 'ea-card'
+    controls.innerHTML = `<h2>Grading operating mode</h2><p>Demo uses simulated inference and keeps results out of operational records and cloud sync. Live mode uses the configured Pi.</p><button id="ea-demo-toggle" type="button" role="switch" aria-label="Demo mode" aria-checked="${isDemoMode()}">${isDemoMode() ? 'Demo enabled — switch to live' : 'Live enabled — switch to demo'}</button>`
+    body.querySelector('.ea')!.append(controls)
+    controls.querySelector<HTMLButtonElement>('button')!.onclick = () => context.setDemo(!isDemoMode())
+  }
   const get = <T extends HTMLElement>(id: string) => d.getElementById(id) as T | null
   const bind = (id: string, action: () => void) => { const el = get<HTMLButtonElement>(id); if (el) el.onclick = action }
   const value = (id: string) => get<HTMLInputElement>(id)?.value.trim() ?? ''
