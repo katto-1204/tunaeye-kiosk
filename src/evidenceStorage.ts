@@ -53,6 +53,22 @@ export async function getCapturedEvidence(id: string): Promise<EvidenceRecord | 
   }
 }
 
+export async function promoteCapturedEvidence(temporaryId: string, id: string): Promise<void> {
+  const database = await openDatabase()
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const transaction = database.transaction(STORE_NAME, 'readwrite'), store = transaction.objectStore(STORE_NAME)
+      const request = store.get(temporaryId)
+      request.onsuccess = () => {
+        if (!request.result) { transaction.abort(); return }
+        store.put({ ...request.result, id }); store.delete(temporaryId)
+      }
+      transaction.oncomplete = () => resolve()
+      transaction.onabort = transaction.onerror = () => reject(transaction.error ?? new Error('Evidence promotion failed'))
+    })
+  } finally { database.close() }
+}
+
 export async function listPendingEvidence(): Promise<EvidenceRecord[]> {
   const database = await openDatabase()
   try {

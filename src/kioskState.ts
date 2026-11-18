@@ -1,3 +1,5 @@
+import { experimentalPolicy, meetsExperimentalPolicy, policyDescription } from './gradingPolicy'
+
 export type Screen =
   | 'welcome'
   | 'select-role'
@@ -76,7 +78,9 @@ export interface FinalDecision {
   next: 'print' | 'tail' | 'override' | 'retake' | 'wait'
 }
 
-export function isAccepted(confidence: number | null | undefined) {
+export function isAccepted(result: SampleResult | number | null | undefined) {
+  if (experimentalPolicy) return typeof result === 'object' && result !== null && meetsExperimentalPolicy(result)
+  const confidence = typeof result === 'object' ? result?.originalConfidence : result
   return typeof confidence === 'number' && confidence >= ACCEPT_CONFIDENCE
 }
 
@@ -103,17 +107,17 @@ export function decisionFor(state: Session): FinalDecision {
   if (!sashibo) return { grade: null, confidence: null, source: 'pending', title: 'Capture the sashibo core', detail: 'Sashibo core is the main sample for this fish.', next: 'wait' }
   if (sashibo.status === 'invalid') return { grade: null, confidence: sashibo.originalConfidence, source: 'retake', title: 'Retake the sashibo core', detail: 'This image cannot be graded. Capture it again inside the guide.', next: 'retake' }
   if (sashibo.overrideGrade) return { grade: sashibo.overrideGrade, confidence: sashibo.originalConfidence, source: 'expert', title: `Grade ${sashibo.overrideGrade}`, detail: 'The expert grader set the final grade.', next: 'print' }
-  if (isAccepted(sashibo.originalConfidence) && sashibo.originalGrade) {
-    return { grade: sashibo.originalGrade, confidence: sashibo.originalConfidence, source: 'sashibo', title: `Grade ${sashibo.originalGrade}`, detail: `Sashibo core is ${sashibo.originalConfidence}% confident, above 80%. This grade is final. A tail cut is not needed.`, next: 'print' }
+  if (isAccepted(sashibo) && sashibo.originalGrade) {
+    return { grade: sashibo.originalGrade, confidence: sashibo.originalConfidence, source: 'sashibo', title: `Grade ${sashibo.originalGrade}`, detail: `Sashibo core is ${sashibo.originalConfidence}% confident, meets the acceptance policy (${policyDescription}). This grade is final. A tail cut is not needed.`, next: 'print' }
   }
-  if (!tail) return { grade: sashibo.originalGrade, confidence: sashibo.originalConfidence, source: 'tail-needed', title: 'Tail cut needed', detail: `Sashibo core is ${sashibo.originalConfidence ?? '—'}% confident, below 80%. Capture a tail-cut sample before the grade is final.`, next: 'tail' }
+  if (!tail) return { grade: sashibo.originalGrade, confidence: sashibo.originalConfidence, source: 'tail-needed', title: 'Tail cut needed', detail: `Sashibo core is ${sashibo.originalConfidence ?? '—'}% confident, does not meet the acceptance policy. Capture a tail-cut sample before the grade is final.`, next: 'tail' }
   if (tail.status === 'invalid') return { grade: null, confidence: tail.originalConfidence, source: 'retake', title: 'Retake the tail cut', detail: 'This tail-cut image cannot be graded. Capture it again inside the guide.', next: 'retake' }
-  if (tail.overrideGrade) return { grade: tail.overrideGrade, confidence: tail.originalConfidence, source: 'expert', title: `Grade ${tail.overrideGrade}`, detail: 'The expert grader set the final grade after both models were below 80%.', next: 'print' }
-  if (isAccepted(tail.originalConfidence) && tail.originalGrade && sashibo.originalGrade) {
+  if (tail.overrideGrade) return { grade: tail.overrideGrade, confidence: tail.originalConfidence, source: 'expert', title: `Grade ${tail.overrideGrade}`, detail: 'The expert grader set the final grade after model predictions required review.', next: 'print' }
+  if (isAccepted(tail) && tail.originalGrade && sashibo.originalGrade) {
     const combined = combineGrades(sashibo, tail)
     return { grade: combined.grade, confidence: tail.originalConfidence, source: 'combined', title: `Grade ${combined.grade}`, detail: `Tail cut is ${tail.originalConfidence}% confident. The final grade blends the sashibo core (${sashibo.originalGrade}, ${sashibo.originalConfidence}%) and tail cut (${tail.originalGrade}, ${tail.originalConfidence}%).`, next: 'print' }
   }
-  return { grade: null, confidence: tail.originalConfidence, source: 'expert-needed', title: 'Expert grade required', detail: `Tail cut is ${tail.originalConfidence ?? '—'}% confident, also below 80%. An expert grader must set the final grade.`, next: 'override' }
+  return { grade: null, confidence: tail.originalConfidence, source: 'expert-needed', title: 'Expert grade required', detail: `Tail cut is ${tail.originalConfidence ?? '—'}% confident, does not meet the acceptance policy. An expert grader must set the final grade.`, next: 'override' }
 }
 
 export const initialSession: Session = {

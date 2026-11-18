@@ -1,4 +1,5 @@
 import { gradeDemoImage, isDemoMode, loadDemoSampleBlob } from './demoMode'
+import { predictionOutcome } from './gradingPolicy'
 import type { DemoOutcome, Grade, SampleType } from './kioskState'
 
 const DEFAULT_API_URL = 'http://10.42.0.1:5000'
@@ -76,11 +77,20 @@ async function request(url: string, stage: PiStage, init?: RequestInit, attempts
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     try {
       const response = await fetch(url, { ...init, credentials: url.startsWith('https://') ? 'include' : init?.credentials, signal: AbortSignal.timeout(TIMEOUT_MS) })
+      if (stage === 'inference' && response.status === 422) {
+        const body = await response.json().catch(() => ({}))
+        const expected = init?.body instanceof FormData && init.body.get('image_type') === 'tailcut' ? 'Tail-Cut' : 'Sashibo Core'
+        const message = body?.error === 'sample_type_mismatch'
+          ? `Wrong sample type. Please upload a ${expected} image.`
+          : 'Sample type cannot be determined. Retake or upload another image.'
+        throw new PiIntegrationError(stage, message, 422)
+      }
       if (!response.ok) throw new PiIntegrationError(stage, response.status === 401 || response.status === 403
         ? `TunaEye gateway authentication failed (HTTP ${response.status}). Sign in to the gateway, then reconnect.`
         : `${label} failed: HTTP ${response.status}${stage === 'snapshot' ? '' : '.'}`, response.status)
       return response
     } catch (error) {
+      if (error instanceof PiIntegrationError && error.status === 422) throw error
       lastError = error instanceof PiIntegrationError
         ? error
         : new PiIntegrationError(stage, error instanceof DOMException && error.name === 'TimeoutError'
@@ -149,7 +159,7 @@ export async function gradePiImage(blob: Blob, sample: SampleType): Promise<PiGr
     captureId,
     imageType,
     modelSource: 'raspberry-pi',
-    outcome: invalid ? 'invalid' : confidence! < 70 ? 'uncertain' : 'valid',
+    outcome: predictionOutcome(invalid, confidence!, data.status),
     grade,
     confidence,
     rawConfidence: rawConfidence!,

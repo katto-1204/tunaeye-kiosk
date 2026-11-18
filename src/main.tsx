@@ -1,2 +1,3 @@
 import { launchExactUI } from './exact-ui'
-launchExactUI()
+import { restoreSqliteRecords } from './gradingRecords'
+void restoreSqliteRecords().finally(launchExactUI)

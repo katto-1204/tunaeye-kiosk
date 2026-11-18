@@ -1,3 +1,4 @@
+import { queueSqliteRecords, readSqliteRecords } from './sqliteStore'
 export type SyncState = 'pending' | 'syncing' | 'synced' | 'failed'
 
 export interface GradingRecord {
@@ -30,8 +31,20 @@ export const loadRecords = (): GradingRecord[] => {
 }
 
 export function saveRecords(records: GradingRecord[]) {
+  const previous = new Map(loadRecords().map(record => [record.id, JSON.stringify(record)]))
   localStorage.setItem(RECORDS_KEY, JSON.stringify(records))
+  queueSqliteRecords(records.filter(record => previous.get(record.id) !== JSON.stringify(record)))
   window.dispatchEvent(new Event('tunaeye-records-updated'))
+}
+
+export async function restoreSqliteRecords() {
+  try {
+    const durable = await readSqliteRecords(), current = loadRecords()
+    const merged = new Map(durable.map(record => [record.id, record]))
+    current.forEach(record => merged.set(record.id, record))
+    localStorage.setItem(RECORDS_KEY, JSON.stringify([...merged.values()]))
+    queueSqliteRecords(current)
+  } catch { /* Browser outbox remains available when the station service is offline. */ }
 }
 
 export function updateRecord(id: string, update: Partial<GradingRecord>) {

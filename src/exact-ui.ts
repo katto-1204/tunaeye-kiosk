@@ -1,7 +1,9 @@
 import source from '../new ui/index (4).html?raw'
-import { capturePiImage, gradePiImage, getPiSettings, checkPiHealth } from './piClient'
+import { capturePiImage, gradePiImage, getPiSettings, checkPiHealth, PiIntegrationError } from './piClient'
 import { initialSession, reducer, decisionFor, type Session, type SampleType, type Grade } from './kioskState'
-import { saveCapturedEvidence } from './evidenceStorage'
+import { saveCapturedEvidence, promoteCapturedEvidence, deleteCapturedEvidence } from './evidenceStorage'
+import { experimentalPolicy, policyDescription } from './gradingPolicy'
+import { sqliteSaveStatus } from './sqliteStore'
 import { loadRecords, saveRecords, type GradingRecord } from './gradingRecords'
 import { loadPriceSchedule, priceSnapshot } from './pricing'
 import { syncPendingRecords, syncPriceSchedule } from './cloudSync'
@@ -83,25 +85,39 @@ const runtime = {
     initialize(w); capturing = true
     const button = w.document.getElementById('sh') as HTMLButtonElement | null
     if (button) { button.disabled = true; button.textContent = 'Grading…' }
+    let temporaryId: string | undefined
     try {
       if (file && (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || !file.size || file.size > 10 * 1024 * 1024)) throw new Error('Choose a JPEG, PNG or WebP image up to 10 MB.')
       const blob = file ?? await capturePiImage(sample)
       const bitmap = await createImageBitmap(blob); bitmap.close()
       const id = `${sessionId}-${key === 'tail' ? 2 : 1}`
       S.captureTime ??= Date.now()
-      if (!isDemoMode()) await saveCapturedEvidence({ id, sessionId, sample, fishId: 'Fish 1', capturedAt: S.captureTime, blob })
+      if (!isDemoMode()) {
+        temporaryId = `${id}-pending-${createId()}`
+        await saveCapturedEvidence({ id: temporaryId, sessionId, sample, fishId: 'Fish 1', capturedAt: S.captureTime, blob })
+      }
+      const result = await gradePiImage(blob, sample)
+      if (result.outcome === 'invalid') {
+        if (temporaryId) await deleteCapturedEvidence(temporaryId)
+        toast('This image cannot be graded. Retake or upload another image.', 1); return
+      }
+      if (temporaryId) { await promoteCapturedEvidence(temporaryId, id); temporaryId = undefined }
       if (previews[key]) URL.revokeObjectURL(previews[key])
       previews[key] = URL.createObjectURL(blob)
       session = { ...session, fishWeights: { 'Fish 1': S.w }, selectedSamples: key === 'tail' ? ['Sashibo core', 'Tail cut'] : ['Sashibo core'], currentSampleIndex: key === 'tail' ? 1 : 0 }
-      const result = await gradePiImage(blob, sample)
       session = reducer(session, { type: 'finishAnalysis', outcome: result.outcome, grade: result.grade, confidence: result.confidence, rawConfidence: result.rawConfidence, inferenceId: result.id, captureId: result.captureId, scores: result.scores, imageType: result.imageType, modelSource: result.modelSource })
       S.img = { ...(S.img ?? {}), [key]: previews[key] }; S[key] = result.confidence
       if (key === 'core') S.tail = null
-      if (!isDemoMode()) persist(w)
+      if (!isDemoMode()) { persist(w); toast(await sqliteSaveStatus()) }
       const decision = decisionFor(session)
       if (decision.next === 'retake') { toast(decision.detail, 1); return }
       go(decision.next === 'tail' ? 'tailneed' : 'final')
-    } catch (error) { toast(`${error instanceof Error ? error.message : 'Inference failed.'} Captured evidence remains saved locally.`, 1) }
+    } catch (error) {
+      if (error instanceof PiIntegrationError && error.status === 422) {
+        if (temporaryId) await deleteCapturedEvidence(temporaryId).catch(() => {})
+        toast(error.message, 1)
+      } else toast(`${error instanceof Error ? error.message : 'Inference failed.'}${temporaryId ? ' Unvalidated capture remains saved locally; previous accepted evidence is unchanged.' : ''}`, 1)
+    }
     finally { capturing = false; if (button?.isConnected) { button.disabled = false; button.textContent = 'Scan sample' } }
   },
   async sync(w: Kiosk) {
@@ -147,7 +163,7 @@ const runtime = {
         const button = d.getElementById('go')!
         if (decision.next === 'override') { d.querySelector('.v5h h1')!.textContent = 'Expert grade required'; button.textContent = 'Set final grade'; button.onclick = () => runtime.override(w); d.querySelectorAll('.med5-l,.gt5,.gs5').forEach(e => e.textContent = '—') }
         else button.onclick = () => { if (decision.next === 'print') api(w).go('receipt') }
-        d.querySelectorAll('.lg5').forEach(e => e.textContent = 'Model predictions · confidence threshold 80%')
+        d.querySelectorAll('.lg5').forEach(e => e.textContent = `Model predictions · ${policyDescription}`)
       }
       const override = d.getElementById('ov'); if (override) override.onclick = () => runtime.override(w)
       d.querySelectorAll<HTMLElement>('#dmsw,[data-t="demo"]').forEach(e => { e.onclick = () => runtime.mode(w, !isDemoMode()); e.setAttribute('aria-checked', String(isDemoMode())) })
@@ -180,6 +196,7 @@ const runtime = {
 export function launchExactUI() {
   ;(window as any).TunaEyeRuntime = runtime
   let html = source
+  if (experimentalPolicy) html = html.replaceAll('under 80%', 'outside acceptance policy').replaceAll('below 80%', 'outside acceptance policy').replaceAll('≥ 80%', 'accepted by policy').replaceAll('80% or above', 'accepted by policy')
   html = html.replace(/gradeOf=\(\)=>lt\(S\.tail==null\?S\.core:\(S\.core\+S\.tail\)\/2\)/, 'gradeOf=()=>window.top.TunaEyeRuntime.grade()')
   html = html.replace("lt=v=>v>=90?'A':v>=80?'B':'C'", 'lt=v=>window.top.TunaEyeRuntime.sampleGrade(v)')
   html = html.replace('n>=20&&n<=200', 'n>=15&&n<=200').replaceAll('Minimum weight is 20 kg', 'Minimum weight is 15 kg').replaceAll('20–200 kg', '15–200 kg').replaceAll('Min 20 kg', 'Min 15 kg')

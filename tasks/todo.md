@@ -1,5 +1,11 @@
 # Plan
 
+## Backend policy preparation and rejected capture safety (2026-11-18)
+
+- [ ] Keep experimental 85%/20-point policy disabled until backend validation is confirmed; prepare shared acceptance/status helpers and policy-aware messages.
+- [ ] Parse sample-validation 422 errors without retry; stage evidence under a unique temporary ID and atomically promote only validated captures.
+- [ ] Verify mismatch/unknown rejection, preserved prior evidence, legacy and experimental policy boundaries, existing capture/receipt flows; build and commit without deploying/enabling policy.
+
 ## Automatic receipt printing (2026-11-18)
 
 - [x] Restore a one-second automatic print on receipt entry, using the existing printer flow.

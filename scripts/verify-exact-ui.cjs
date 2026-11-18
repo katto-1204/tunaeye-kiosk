@@ -35,6 +35,19 @@ const fs = require('fs')
     if (!requests[0]?.includes('sashibocore')) throw Error('Pi image_type was not sent')
     const records = await page.evaluate(() => JSON.parse(localStorage.getItem('tunaeye-records') || '[]'))
     if (records[0]?.grade !== 'C' || records[0]?.result?.originalConfidence !== 91) throw Error('Model grade or confidence was not preserved')
+    const evidenceBefore = await page.evaluate(async id => { const e = await (await import('/src/evidenceStorage.ts')).getCapturedEvidence(id); return Array.from(new Uint8Array(await e.blob.arrayBuffer())) }, records[0].capturedImageId)
+    let rejections = 0
+    await page.route('**/grade', route => { rejections++; return route.fulfill({ status: 422, contentType: 'application/json', body: JSON.stringify({ error: rejections === 1 ? 'sample_type_mismatch' : 'sample_type_unknown' }) }) })
+    await kiosk.evaluate(() => go('core'))
+    for (const message of ['Wrong sample type. Please upload a Sashibo Core image.', 'Sample type cannot be determined. Retake or upload another image.']) {
+      await kiosk.locator('#fi').setInputFiles('public/assets/sashiboCoreFull.png')
+      await expect(kiosk.getByRole('alert')).toContainText(message)
+      await expect(kiosk.locator('#sh')).toBeVisible()
+    }
+    expect(rejections).toBe(2)
+    expect(await page.evaluate(() => JSON.parse(localStorage.getItem('tunaeye-records')))).toEqual(records)
+    expect(await page.evaluate(async id => { const e = await (await import('/src/evidenceStorage.ts')).getCapturedEvidence(id); return Array.from(new Uint8Array(await e.blob.arrayBuffer())) }, records[0].capturedImageId)).toEqual(evidenceBefore)
+    await kiosk.evaluate(() => go('final'))
     await kiosk.evaluate(() => {
       window.printCalls = []; window.failPrint = true
       window.print = () => { window.printCalls.push(performance.now()); if (window.failPrint) throw Error('Printer unavailable') }
