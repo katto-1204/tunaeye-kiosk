@@ -23,8 +23,8 @@ export async function requestPwaInstall(): Promise<string> {
   if (matchMedia('(display-mode: standalone)').matches || matchMedia('(display-mode: fullscreen)').matches) return 'TunaEye is already running as an installed app.'
   if (prompting) return 'The installation prompt is already open.'
   if (!installPrompt) return window.isSecureContext
-    ? 'Use your browser menu to install TunaEye. Offline installation requires the production kiosk build.'
-    : 'Open TunaEye through HTTPS or localhost to install it and enable offline caching.'
+    ? 'Use your browser menu (⋮ → Install app / Add to Home screen) to install TunaEye.'
+    : `To install TunaEye as a full PWA over Pi HTTP (${window.location.origin}):\n1. Open chrome://flags/#unsafely-treat-insecure-origin-as-secure\n2. Set Enabled and add ${window.location.origin}\n3. Relaunch Chrome, then tap Install app (or use ⋮ → Add to Home screen).`
   const prompt = installPrompt
   prompting = true
   try {

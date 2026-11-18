@@ -52,7 +52,8 @@ export function showLiveReadiness(w: Window): Promise<boolean> {
     const render = () => {
       if (closed) return
       list.innerHTML = rows.map(row => `<li class="lr-${row.state}" data-live-check="${row.key}"><span class="lr-dot" aria-hidden="true">${row.state === 'ready' ? '✓' : row.state === 'error' ? '!' : '…'}</span><div><b>${row.label}</b><small>${esc(row.detail)}</small></div></li>`).join('')
-      start.disabled = running || !rows.every(row => row.state === 'ready'); retry.disabled = running
+      const requiredReady = rows.filter(row => row.key !== 'camera').every(row => row.state === 'ready')
+      start.disabled = running || !requiredReady; retry.disabled = running
     }
     const set = (key: string, state: Row['state'], detail: string) => { Object.assign(rows.find(row => row.key === key)!, { state, detail }); render() }
     const close = (ready: boolean) => { if (closed) return; closed = true; overlay.remove(); d.removeEventListener('keydown', keys, true); previousFocus?.focus(); resolve(ready) }
@@ -78,7 +79,7 @@ export function showLiveReadiness(w: Window): Promise<boolean> {
             for (const key of ['sashibocore', 'tailcut'] as const) set(key, status.models?.[key] === true ? 'ready' : 'error', status.models?.[key] === true ? 'Backend reports model loaded.' : status.models?.[key] === false ? 'Backend reports model not loaded. Check the Flask model paths.' : 'Backend did not report model readiness. Add explicit model flags to /status.')
           } catch (error) { for (const key of ['network', 'server', 'sashibocore', 'tailcut']) set(key, 'error', message(error)) }
         })(),
-        (async () => { try { const blob = await capturePiImage(); const bitmap = await createImageBitmap(blob); const dimensions = `${bitmap.width} × ${bitmap.height}`; bitmap.close(); set('camera', 'ready', `Received a decodable camera image (${dimensions}).`) } catch (error) { set('camera', 'error', message(error)) } })(),
+        (async () => { try { const blob = await capturePiImage(); const bitmap = await createImageBitmap(blob); const dimensions = `${bitmap.width} × ${bitmap.height}`; bitmap.close(); set('camera', 'ready', `Received a decodable camera image (${dimensions}).`) } catch (error) { set('camera', 'error', `${message(error)} — You can still continue with DroidCam, browser camera, or image upload.`) } })(),
         (async () => { try { const detail = await storageCheck(); set('storage', 'ready', detail) } catch (error) { set('storage', 'error', message(error)) } })(),
       ])
       running = false; render()
@@ -86,7 +87,7 @@ export function showLiveReadiness(w: Window): Promise<boolean> {
     overlay.querySelector<HTMLButtonElement>('[data-lr=cancel]')!.onclick = () => close(false)
     start.onclick = () => { if (!start.disabled) close(true) }; retry.onclick = () => void run()
     overlay.onclick = event => { if (event.target === overlay) close(false) }
-    ;(d.getElementById('stage') || d.body).append(overlay); d.addEventListener('keydown', keys, true); overlay.querySelector<HTMLButtonElement>('button')!.focus()
+      ; (d.getElementById('stage') || d.body).append(overlay); d.addEventListener('keydown', keys, true); overlay.querySelector<HTMLButtonElement>('button')!.focus()
     void run()
   }).finally(() => active.delete(w))
   active.set(w, promise)

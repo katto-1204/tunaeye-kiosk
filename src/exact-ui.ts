@@ -1,6 +1,6 @@
 import source from '../new ui/index (4).html?raw'
 import { capturePiImage, gradePiImage, getPiSettings, checkPiHealth, PiIntegrationError } from './piClient'
-import { initialSession, reducer, decisionFor, ACCEPT_CONFIDENCE, type Session, type SampleType, type Grade } from './kioskState'
+import { initialSession, reducer, decisionFor, combineGrades, ACCEPT_CONFIDENCE, type Session, type SampleType, type Grade } from './kioskState'
 import { saveCapturedEvidence, promoteCapturedEvidence, deleteCapturedEvidence } from './evidenceStorage'
 import { experimentalPolicy, policyDescription } from './gradingPolicy'
 import { sqliteSaveStatus } from './sqliteStore'
@@ -23,6 +23,20 @@ let sessionId = createId(), order: number | null = null, capturing = false
 let tabletEntry = false
 const previews: Record<string, string> = {}
 let activeCameraSource = typeof localStorage !== 'undefined' ? (localStorage.getItem('tunaeye-camera-source') || 'pi') : 'pi'
+let droidcamUrl = typeof localStorage !== 'undefined' ? (localStorage.getItem('tunaeye-droidcam-url') || 'http://192.168.1.2:4747') : 'http://192.168.1.2:4747'
+const normalizeDroidcamUrl = (raw: string) => {
+  const trimmed = raw.trim().replace(/\/+$/, '')
+  if (!trimmed) return 'http://192.168.1.2:4747'
+  const withProto = /^https?:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`
+  return /:\d+$/.test(withProto) ? withProto : `${withProto}:4747`
+}
+const preliminaryGrade = (): Grade => {
+  const decided = decisionFor(session).grade
+  if (decided) return decided
+  const s = session.results['Sashibo core'], t = session.results['Tail cut']
+  if (s?.originalGrade && t?.originalGrade) return s.originalGrade === t.originalGrade ? s.originalGrade : combineGrades(s, t).grade
+  return s?.originalGrade ?? t?.originalGrade ?? 'A'
+}
 let localStream: MediaStream | null = null
 const stopLocalStream = () => { if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null } }
 const api = (w: Kiosk) => w.eval('({S,SC,go,R,toast,modal,api,RATE})')
@@ -78,7 +92,7 @@ const runtime = {
     if (S.core != null) { S.core = S.tail = null; S.img = {}; S.captureTime = undefined; session = { ...initialSession, results: {} }; order = null }
     setKioskDemoMode(demo); localStorage.setItem('tunaeye-explicit-demo', String(demo)); api(w).S.cfg.demo = demo; api(w).R()
   },
-  grade: () => decisionFor(session).grade ?? 'C',
+  grade: () => preliminaryGrade(),
   sampleGrade: (confidence: number) => Object.values(session.results).find(r => r?.originalConfidence === confidence)?.originalGrade ?? '—',
   async pin(pin: string, w?: Kiosk) {
     if (w) api(w).S.pinError = ''
@@ -101,10 +115,22 @@ const runtime = {
     const { toast } = api(w), settings = getPiSettings(), doc = w.document
     const current = doc.getElementById('vid')
     if (!current) return
+    if (activeCameraSource === 'droidcam') {
+      stopLocalStream()
+      const base = normalizeDroidcamUrl(droidcamUrl)
+      const image = doc.createElement('img'); image.id = 'vid'; image.alt = 'Live DroidCam stream'; image.style.cssText = 'width:100%;height:100%;object-fit:contain'
+      image.crossOrigin = 'anonymous'
+      image.onerror = () => toast(`DroidCam unreachable at ${base}. Check phone IP & port (:4747) on this Wi-Fi.`, 1)
+      current.replaceWith(image)
+      image.src = `${base}/video`
+      const b = doc.getElementById('sh') as HTMLButtonElement | null; if (b) b.disabled = false
+      const label = doc.getElementById('vres'); if (label) label.textContent = `DroidCam (${base.replace(/^https?:\/\//, '')})`
+      return
+    }
     if (activeCameraSource !== 'pi') {
       stopLocalStream()
       try {
-        if (!navigator.mediaDevices?.getUserMedia) throw new Error('Browser camera requires HTTPS or localhost. Use Pi camera (:8080) over HTTP.')
+        if (!navigator.mediaDevices?.getUserMedia) throw new Error('Browser webcam blocked on HTTP. Use DroidCam URL (:4747), Upload image, or allow http://10.42.0.1:5000 in chrome://flags/#unsafely-treat-insecure-origin-as-secure.')
         const videoConstraint: MediaTrackConstraints = activeCameraSource === 'device'
           ? { width: { ideal: 1280 }, height: { ideal: 720 } }
           : { deviceId: { exact: activeCameraSource }, width: { ideal: 1280 }, height: { ideal: 720 } }
@@ -122,6 +148,8 @@ const runtime = {
       } catch (error) {
         stopLocalStream()
         toast(error instanceof Error ? error.message : 'Could not open selected camera.', 1)
+        const label = doc.getElementById('vres'); if (label) label.textContent = 'Camera blocked on HTTP'
+        return
       }
     }
     stopLocalStream()
@@ -145,6 +173,27 @@ const runtime = {
       let blob: Blob
       if (file) {
         blob = file
+      } else if (activeCameraSource === 'droidcam') {
+        const base = normalizeDroidcamUrl(droidcamUrl)
+        try {
+          const res = await fetch(`${base}/shot.jpg`, { cache: 'no-store', signal: AbortSignal.timeout(4000) })
+          if (!res.ok) throw new Error(`DroidCam returned HTTP ${res.status}`)
+          const fetched = await res.blob()
+          if (!fetched.size) throw new Error('DroidCam returned empty snapshot.')
+          blob = fetched
+        } catch {
+          const imgEl = w.document.getElementById('vid') as HTMLImageElement | null
+          if (imgEl && imgEl.tagName === 'IMG' && imgEl.naturalWidth > 0) {
+            const canvas = w.document.createElement('canvas')
+            canvas.width = imgEl.naturalWidth; canvas.height = imgEl.naturalHeight
+            canvas.getContext('2d')!.drawImage(imgEl, 0, 0)
+            const captured = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.92))
+            if (!captured || captured.size === 0) throw new Error(`Could not capture frame from DroidCam (${base}).`)
+            blob = captured
+          } else {
+            throw new Error(`DroidCam snapshot failed at ${base}/shot.jpg. Check DroidCam Wi-Fi IP or use Upload image.`)
+          }
+        }
       } else {
         const videoEl = w.document.getElementById('vid')
         if (activeCameraSource !== 'pi' && videoEl?.tagName === 'VIDEO' && (videoEl as HTMLVideoElement).videoWidth > 0) {
@@ -344,128 +393,208 @@ const runtime = {
           if (side && shBtn && !d.getElementById('cam-chooser')) {
             const box = d.createElement('div'); box.id = 'cam-chooser'
             box.style.cssText = 'display:grid;gap:6px;margin:10px 0 6px;padding:10px 12px;border-radius:16px;background:#f4f8ff;border:1px solid #dbe6fa'
-            box.innerHTML = `<div style="display:flex;align-items:center;justify-content:space-between;font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.06em"><span>Camera source</span><button type="button" id="cam-trigger" style="padding:3px 9px;border-radius:999px;border:1px solid #c7d8fa;background:#fff;color:#2159e8;font:700 11px Inter,system-ui,sans-serif;cursor:pointer">Trigger ↻</button></div><select id="cam-select" aria-label="Available cameras" style="width:100%;height:34px;border-radius:10px;border:1px solid #cbd9ef;background:#fff;padding:0 10px;font:600 12.5px Inter,system-ui,sans-serif;color:#182842"></select>`
+            box.innerHTML = `<div style="display:flex;align-items:center;justify-content:space-between;gap:6px;font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.06em"><span>Camera source</span><div style="display:flex;gap:5px"><button type="button" id="cam-refresh" title="Ask permission & refresh cameras" style="padding:3px 9px;border-radius:999px;border:1px solid #cbd9ef;background:#fff;color:#475569;font:700 11px Inter,system-ui,sans-serif;cursor:pointer">Refresh ↻</button><button type="button" id="cam-trigger" title="Start selected camera" style="padding:3px 10px;border-radius:999px;border:0;background:#2159e8;color:#fff;font:700 11px Inter,system-ui,sans-serif;cursor:pointer">Trigger</button></div></div><select id="cam-select" aria-label="Available cameras" style="width:100%;height:34px;border-radius:10px;border:1px solid #cbd9ef;background:#fff;padding:0 10px;font:600 12.5px Inter,system-ui,sans-serif;color:#182842"></select><input id="cam-droid-url" type="url" placeholder="http://192.168.1.2:4747" value="${droidcamUrl}" aria-label="DroidCam URL" style="display:none;width:100%;height:32px;border-radius:10px;border:1px solid #cbd9ef;background:#fff;padding:0 10px;font:600 12px Inter,system-ui,sans-serif;color:#182842;box-sizing:border-box"><small id="cam-hint" style="display:none;font-size:11px;line-height:1.35;color:#64748b"></small>`
             shBtn.before(box)
             const sel = box.querySelector<HTMLSelectElement>('#cam-select')!
+            const refBtn = box.querySelector<HTMLButtonElement>('#cam-refresh')!
             const trig = box.querySelector<HTMLButtonElement>('#cam-trigger')!
+            const dInput = box.querySelector<HTMLInputElement>('#cam-droid-url')!
+            const hint = box.querySelector<HTMLElement>('#cam-hint')!
+            const syncExtra = () => {
+              dInput.style.display = sel.value === 'droidcam' ? 'block' : 'none'
+              if (sel.value !== 'pi' && sel.value !== 'droidcam' && !navigator.mediaDevices?.getUserMedia) {
+                hint.style.display = 'block'
+                hint.textContent = 'Browser webcam blocked on HTTP. Use DroidCam URL (:4747) or allow this origin in chrome://flags/#unsafely-treat-insecure-origin-as-secure.'
+              } else {
+                hint.style.display = 'none'
+              }
+            }
             const populate = async () => {
-              const opts: Array<[string, string]> = [['pi', 'Pi camera (:8080)']]
+              const opts: Array<[string, string]> = [['pi', 'Pi camera (:8080)'], ['droidcam', 'DroidCam URL (:4747)']]
               if (navigator.mediaDevices?.enumerateDevices) {
                 try {
                   const devs = (await navigator.mediaDevices.enumerateDevices()).filter(dev => dev.kind === 'videoinput')
                   if (devs.length) devs.forEach((dev, idx) => opts.push([dev.deviceId || 'device', dev.label || `Camera ${idx + 1} (Browser)`]))
-                  else opts.push(['device', 'Device / DroidCam (Browser)'])
-                } catch { opts.push(['device', 'Device / DroidCam (Browser)']) }
+                  else opts.push(['device', 'Browser / DroidCam Webcam'])
+                } catch { opts.push(['device', 'Browser / DroidCam Webcam']) }
               } else {
-                opts.push(['device', 'Device / DroidCam (Browser)'])
+                opts.push(['device', 'Browser / DroidCam Webcam'])
               }
               sel.innerHTML = opts.map(([val, lbl]) => `<option value="${val}">${lbl}</option>`).join('')
               sel.value = opts.some(([val]) => val === activeCameraSource) ? activeCameraSource : 'pi'
+              syncExtra()
+            }
+            const requestCamPermission = async () => {
+              if (!navigator.mediaDevices?.getUserMedia) {
+                const msg = 'Browser camera permission requires HTTPS or chrome://flags/#unsafely-treat-insecure-origin-as-secure.'
+                hint.style.display = 'block'; hint.textContent = msg; api(w).toast(msg, 1)
+                return false
+              }
+              try {
+                const probe = await navigator.mediaDevices.getUserMedia({ video: true, audio: false })
+                probe.getTracks().forEach(t => t.stop())
+                await populate()
+                return true
+              } catch (err) {
+                const msg = err instanceof Error ? err.message : 'Camera permission denied.'
+                hint.style.display = 'block'; hint.textContent = msg; api(w).toast(msg, 1)
+                return false
+              }
             }
             void populate()
-            sel.onchange = () => {
-              activeCameraSource = sel.value
-              localStorage.setItem('tunaeye-camera-source', activeCameraSource)
-              void runtime.camera(w)
+            navigator.mediaDevices?.addEventListener?.('devicechange', () => { if (box.isConnected) void populate() })
+            dInput.onchange = () => {
+              droidcamUrl = normalizeDroidcamUrl(dInput.value)
+              dInput.value = droidcamUrl
+              localStorage.setItem('tunaeye-droidcam-url', droidcamUrl)
+              if (sel.value === 'droidcam') void runtime.camera(w)
             }
-            trig.onclick = async () => {
-              if (sel.value !== 'pi' && navigator.mediaDevices?.getUserMedia) {
-                try { const s = await navigator.mediaDevices.getUserMedia({ video: true, audio: false }); s.getTracks().forEach(t => t.stop()); await populate() } catch { }
+              sel.onchange = async () => {
+                activeCameraSource = sel.value
+                localStorage.setItem('tunaeye-camera-source', activeCameraSource)
+                syncExtra()
+                if (activeCameraSource !== 'pi' && activeCameraSource !== 'droidcam') await requestCamPermission()
+                void runtime.camera(w)
               }
-              activeCameraSource = sel.value
-              localStorage.setItem('tunaeye-camera-source', activeCameraSource)
-              void runtime.camera(w)
-            }
-          }
-        }
-        if (S.scr === 'final') {
-          const button = d.getElementById('go')!
-          const chip = d.querySelector('.v5h1 .v5c')
-          if (decision.provisional && chip) { chip.className = 'v5c c-am'; chip.innerHTML = '<i></i>PROVISIONAL' }
-          if (decision.next === 'override') {
-            d.querySelector('.v5h h1')!.textContent = decision.provisional ? 'Provisional — Confirmation required' : 'Manual review required'
-            button.textContent = decision.provisional ? 'Confirm / Set final grade' : 'Set final grade'
-            button.onclick = () => runtime.override(w)
-            d.querySelectorAll('.med5-l,.gt5,.gs5').forEach(e => e.textContent = '—')
-          } else button.onclick = () => { if (decision.next === 'print') api(w).go('receipt') }
-          d.querySelectorAll('.lg5').forEach(e => e.textContent = decision.detail)
-          if (session.tailAvailability === 'not_available') {
-            d.querySelectorAll('.ph5-f span').forEach(el => { if (el.textContent?.includes('Tail')) el.textContent = 'Tail-Cut: NOT AVAILABLE' })
-          }
-        }
-        if (S.scr === 'receipt' && decision.provisional) {
-          const rHead = d.querySelector('.rc-h, .rh1')
-          if (rHead && !d.getElementById('provisional-receipt-tag')) {
-            const tag = d.createElement('div'); tag.id = 'provisional-receipt-tag'; tag.style.cssText = 'margin:6px 0;padding:4px 10px;border-radius:999px;background:#fff4db;color:#925800;font-size:11px;font-weight:800;display:inline-block'; tag.textContent = 'PROVISIONAL · TAIL-CUT NOT AVAILABLE'; rHead.after(tag)
-          }
-        }
-        const override = d.getElementById('ov'); if (override) override.onclick = () => runtime.override(w)
-        d.querySelectorAll<HTMLElement>('#dmsw,[data-t="demo"]').forEach(e => { e.onclick = () => runtime.mode(w, !isDemoMode()); e.setAttribute('aria-checked', String(isDemoMode())) })
-        if (S.scr === 'name') {
-          const start = d.getElementById('go') as HTMLButtonElement, proceed = start.onclick
-          start.onclick = async event => {
-            if (start.disabled) return
-            start.disabled = true
-            try {
-              if (isDemoMode() || await showLiveReadiness(w)) {
-                registerGrader(S.name)
-                proceed?.call(start, event)
+              refBtn.onclick = async () => {
+                refBtn.disabled = true
+                try {
+                  if (navigator.mediaDevices) {
+                    const ok = await requestCamPermission()
+                    if (ok) api(w).toast('Cameras refreshed')
+                  } else {
+                    await populate()
+                    syncExtra()
+                    api(w).toast('Refreshed list (browser webcam blocked on HTTP)', 1)
+                  }
+                } finally { if (refBtn.isConnected) refBtn.disabled = false }
+              }
+              trig.onclick = async () => {
+                if (sel.value === 'droidcam') {
+                  droidcamUrl = normalizeDroidcamUrl(dInput.value)
+                  dInput.value = droidcamUrl
+                  localStorage.setItem('tunaeye-droidcam-url', droidcamUrl)
+                } else if (sel.value !== 'pi') {
+                  const ok = await requestCamPermission()
+                  if (!ok) return
+                }
+                activeCameraSource = sel.value
+                localStorage.setItem('tunaeye-camera-source', activeCameraSource)
+                syncExtra()
+                void runtime.camera(w)
               }
             }
-            finally { if (start.isConnected) start.disabled = !S.name.trim() }
           }
-          if (isDemoMode()) {
-            const choices = d.createElement('select'); choices.setAttribute('aria-label', 'Demo scenario'); choices.className = 'inp'; choices.style.cssText = 'position:absolute;left:14px;bottom:14px;z-index:5;width:auto;max-width:190px;height:26px;padding:0 22px 0 10px;border-radius:999px;font-size:11px;font-weight:700;box-shadow:0 2px 8px rgba(18,59,112,.12)'
-            choices.innerHTML = demoScenarios().map(item => `<option value="${item.id}" title="${item.detail}">${item.label}</option>`).join(''); choices.value = getDemoScenario()
-            choices.onchange = () => setDemoScenario(choices.value as DemoScenario); (start.parentElement!.parentElement ?? start.parentElement!).append(choices)
+          if (S.scr === 'final') {
+            const button = d.getElementById('go')!
+            const chip = d.querySelector('.v5h1 .v5c')
+            const coreRes = session.results['Sashibo core'], tailRes = session.results['Tail cut']
+            const gradeColor = (g?: Grade | null) => g === 'A' ? '#12a56a' : g === 'B' ? '#d97706' : '#d9473a'
+            const updateSampleBadge = (zoomKey: string, res?: typeof coreRes) => {
+              if (!res?.originalGrade) return
+              const badge = d.querySelector<HTMLElement>(`.ph5[data-zoom="${zoomKey}"] .v5sc`)
+              if (badge) {
+                badge.textContent = `Grade ${res.originalGrade}${res.originalConfidence != null ? ` · ${res.originalConfidence.toFixed(1)}%` : ''}`
+                badge.style.background = gradeColor(res.originalGrade)
+              }
+            }
+            updateSampleBadge('core', coreRes)
+            updateSampleBadge('tail', tailRes)
+            const bars = d.querySelectorAll<HTMLElement>('.bs5 .b5')
+            if (bars[0] && coreRes?.originalGrade) { const lbl = bars[0].querySelector('.b5h span'); if (lbl) lbl.textContent = `Core · Grade ${coreRes.originalGrade}` }
+            if (bars[1] && tailRes?.originalGrade) { const lbl = bars[1].querySelector('.b5h span'); if (lbl) lbl.textContent = `Tail · Grade ${tailRes.originalGrade}` }
+            const mixLabel = d.querySelector('.sp5 span'); if (mixLabel) mixLabel.textContent = tailRes ? 'Avg confidence' : 'Model confidence'
+            if (decision.provisional && chip) { chip.className = 'v5c c-am'; chip.innerHTML = '<i></i>PROVISIONAL' }
+            if (decision.next === 'override') {
+              const prelim = preliminaryGrade()
+              d.querySelector('.v5h h1')!.textContent = decision.provisional ? 'Provisional — Confirmation required' : 'Manual review required'
+              button.textContent = decision.provisional ? 'Confirm / Set final grade' : 'Confirm / Set final grade'
+              button.onclick = () => runtime.override(w)
+              const gt = d.querySelector('.gt5'); if (gt) gt.textContent = `Grade ${prelim} (Review)`
+              const gs = d.querySelector('.gs5'); if (gs) gs.textContent = 'Confirm or override below'
+            } else button.onclick = () => { if (decision.next === 'print') api(w).go('receipt') }
+            d.querySelectorAll('.lg5').forEach(e => e.textContent = decision.detail)
+            if (session.tailAvailability === 'not_available') {
+              d.querySelectorAll('.ph5-f span').forEach(el => { if (el.textContent?.includes('Tail')) el.textContent = 'Tail-Cut: NOT AVAILABLE' })
+            }
+          }
+          if (S.scr === 'receipt' && decision.provisional) {
+            const rHead = d.querySelector('.rc-h, .rh1')
+            if (rHead && !d.getElementById('provisional-receipt-tag')) {
+              const tag = d.createElement('div'); tag.id = 'provisional-receipt-tag'; tag.style.cssText = 'margin:6px 0;padding:4px 10px;border-radius:999px;background:#fff4db;color:#925800;font-size:11px;font-weight:800;display:inline-block'; tag.textContent = 'PROVISIONAL · TAIL-CUT NOT AVAILABLE'; rHead.after(tag)
+            }
+          }
+          const override = d.getElementById('ov'); if (override) override.onclick = () => runtime.override(w)
+          d.querySelectorAll<HTMLElement>('#dmsw,[data-t="demo"]').forEach(e => { e.onclick = () => runtime.mode(w, !isDemoMode()); e.setAttribute('aria-checked', String(isDemoMode())) })
+          if (S.scr === 'name') {
+            const start = d.getElementById('go') as HTMLButtonElement, proceed = start.onclick
+            start.onclick = async event => {
+              if (start.disabled) return
+              start.disabled = true
+              try {
+                if (isDemoMode() || await showLiveReadiness(w)) {
+                  registerGrader(S.name)
+                  proceed?.call(start, event)
+                }
+              }
+              finally { if (start.isConnected) start.disabled = !S.name.trim() }
+            }
+            if (isDemoMode()) {
+              const choices = d.createElement('select'); choices.setAttribute('aria-label', 'Demo scenario'); choices.className = 'inp'; choices.style.cssText = 'position:absolute;left:14px;bottom:14px;z-index:5;width:auto;max-width:190px;height:26px;padding:0 22px 0 10px;border-radius:999px;font-size:11px;font-weight:700;box-shadow:0 2px 8px rgba(18,59,112,.12)'
+              choices.innerHTML = demoScenarios().map(item => `<option value="${item.id}" title="${item.detail}">${item.label}</option>`).join(''); choices.value = getDemoScenario()
+              choices.onchange = () => setDemoScenario(choices.value as DemoScenario); (start.parentElement!.parentElement ?? start.parentElement!).append(choices)
+            }
+          }
+          if (isDemoMode() && S.scr === 'final') d.querySelectorAll('.lg5').forEach(e => e.textContent = 'Simulated prediction · Demo only · Not saved as an operational grade')
+          const install = d.getElementById('ia'); if (install) install.onclick = async () => {
+            const msg = await requestPwaInstall()
+            if (msg.includes('chrome://flags')) api(w).modal({ title: 'Install TunaEye on Tablet', body: msg.replace(/\n/g, '<br>'), ok: 'Got it', onOk: () => { } })
+            else api(w).toast(msg)
+          }
+          if (S.scr === 'receipt') { const skip = d.getElementById('sk'); if (skip) skip.onclick = () => api(w).modal({ title: 'Skip printing?', body: 'The record remains saved locally.', ok: 'Skip receipt', onOk: () => runtime.finish(w) }) }
+          if (S.scr === 'admin' && S.tab === 'devices') {
+            d.querySelectorAll('.bd.ok').forEach(e => e.textContent = 'Not verified')
+            const b = d.createElement('button'); b.className = 'xpr'; b.textContent = 'Check Raspberry Pi'; b.onclick = async () => { try { await checkPiHealth(); api(w).toast('Pi status endpoint reachable') } catch (e) { api(w).toast(e instanceof Error ? e.message : 'Pi unavailable', 1) } }; d.querySelector('.ab2')?.append(b)
+          }
+          const save = d.getElementById('sv')
+          if (save) save.onclick = async () => {
+            if (S.tab === 'prices') {
+              const prices = { ...loadPriceSchedule() }; for (const input of d.querySelectorAll<HTMLInputElement>('.pi')) { const value = Number(input.value); if (!Number.isFinite(value) || value < 0) { api(w).toast('Enter non-negative prices.', 1); return }; prices[input.dataset.g as Grade] = value }
+              localStorage.setItem('tunaeye-prices', JSON.stringify(prices)); Object.assign(RATE, prices)
+              try { await syncPriceSchedule(prices); api(w).toast('Price schedule saved and verified') } catch { api(w).toast('Prices saved locally. Cloud sync unavailable.', 1) }
+            } else { localStorage.setItem('tunaeye-station', S.cfg.name); localStorage.setItem('tunaeye-rpi-url', S.cfg.url); localStorage.setItem('tunaeye-model-name', S.cfg.model); api(w).toast('Station settings saved') }
+          }
+          if (S.scr === 'admin') {
+            enhanceAdmin(w, { refresh: () => api(w).R(), notice: (text, error) => api(w).toast(text, error ? 1 : 0), setDemo: value => runtime.mode(w, value) })
+            if (S.tab === 'settings') { const host = d.querySelector<HTMLElement>('.ea'); if (host) mountPinSettings(w, host) }
+            d.querySelectorAll('.as > div').forEach(el => { if (el.textContent?.includes('System online')) el.textContent = navigator.onLine ? 'Network available · Pi not checked' : 'Network offline · records retained' })
           }
         }
-        if (isDemoMode() && S.scr === 'final') d.querySelectorAll('.lg5').forEach(e => e.textContent = 'Simulated prediction · Demo only · Not saved as an operational grade')
-        const install = d.getElementById('ia'); if (install) install.onclick = async () => api(w).toast(await requestPwaInstall())
-        if (S.scr === 'receipt') { const skip = d.getElementById('sk'); if (skip) skip.onclick = () => api(w).modal({ title: 'Skip printing?', body: 'The record remains saved locally.', ok: 'Skip receipt', onOk: () => runtime.finish(w) }) }
-        if (S.scr === 'admin' && S.tab === 'devices') {
-          d.querySelectorAll('.bd.ok').forEach(e => e.textContent = 'Not verified')
-          const b = d.createElement('button'); b.className = 'xpr'; b.textContent = 'Check Raspberry Pi'; b.onclick = async () => { try { await checkPiHealth(); api(w).toast('Pi status endpoint reachable') } catch (e) { api(w).toast(e instanceof Error ? e.message : 'Pi unavailable', 1) } }; d.querySelector('.ab2')?.append(b)
-        }
-        const save = d.getElementById('sv')
-        if (save) save.onclick = async () => {
-          if (S.tab === 'prices') {
-            const prices = { ...loadPriceSchedule() }; for (const input of d.querySelectorAll<HTMLInputElement>('.pi')) { const value = Number(input.value); if (!Number.isFinite(value) || value < 0) { api(w).toast('Enter non-negative prices.', 1); return }; prices[input.dataset.g as Grade] = value }
-            localStorage.setItem('tunaeye-prices', JSON.stringify(prices)); Object.assign(RATE, prices)
-            try { await syncPriceSchedule(prices); api(w).toast('Price schedule saved and verified') } catch { api(w).toast('Prices saved locally. Cloud sync unavailable.', 1) }
-          } else { localStorage.setItem('tunaeye-station', S.cfg.name); localStorage.setItem('tunaeye-rpi-url', S.cfg.url); localStorage.setItem('tunaeye-model-name', S.cfg.model); api(w).toast('Station settings saved') }
-        }
-        if (S.scr === 'admin') {
-          enhanceAdmin(w, { refresh: () => api(w).R(), notice: (text, error) => api(w).toast(text, error ? 1 : 0), setDemo: value => runtime.mode(w, value) })
-          if (S.tab === 'settings') { const host = d.querySelector<HTMLElement>('.ea'); if (host) mountPinSettings(w, host) }
-          d.querySelectorAll('.as > div').forEach(el => { if (el.textContent?.includes('System online')) el.textContent = navigator.onLine ? 'Network available · Pi not checked' : 'Network offline · records retained' })
-        }
-      }
-    const done = SC.done; SC.done = () => { const screen = done(); screen.after = () => { const e = w.document.querySelector('.cdw'); if (e) { e.innerHTML = '<button class="pill">Grade another</button>'; e.querySelector('button')!.onclick = () => w.eval('fresh()') } }; return screen }
-    api(w).R()
-    if (tabletEntry) w.document.addEventListener('pointerdown', () => {
-      if (!document.fullscreenElement) void document.documentElement.requestFullscreen?.().catch(() => { })
-    }, { once: true, capture: true })
-    if (!w.document.getElementById('te-net-pill')) {
-      const pill = w.document.createElement('button')
-      pill.type = 'button'
-      pill.id = 'te-net-pill'
-      pill.setAttribute('aria-live', 'polite')
-      pill.setAttribute('aria-label', 'View network and connection details')
-      pill.style.cssText = 'position:fixed;right:12px;bottom:10px;z-index:25;pointer-events:auto;cursor:pointer;display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:999px;font:700 11px/1.2 Inter,system-ui,sans-serif;background:rgba(255,255,255,.94);color:#182842;border:1px solid rgba(18,59,112,.16);box-shadow:0 2px 10px rgba(18,59,112,.12);backdrop-filter:blur(6px)'
-      w.document.body.append(pill)
-      const barsSvg = (bars: number, color: string) => `<svg width="14" height="12" viewBox="0 0 14 12" aria-hidden="true">${[0, 1, 2].map(i => `<rect x="${i * 5}" y="${8 - i * 3}" width="3" height="${4 + i * 3}" rx="1" fill="${i < bars ? color : '#cbd5e1'}"/>`).join('')}</svg>`
-      let latest = { piOk: false, piMs: 0, camOk: false, sashiboOk: false, tailOk: false, cloudOk: false, bars: 0, color: '#dc2626', label: 'Checking…', rtt: 0 }
-      const renderModal = () => {
-        const modal = w.document.getElementById('te-net-modal')
-        if (!modal) return
-        const settings = getPiSettings()
-        const pendingCount = loadRecords().filter(r => r.transaction?.syncState !== 'synced').length
-        const conn = (navigator as unknown as { connection?: { effectiveType?: string; downlink?: number; rtt?: number } }).connection
-        const netDetail = [navigator.onLine ? 'Online' : 'Offline', conn?.effectiveType?.toUpperCase(), conn?.downlink ? `${conn.downlink} Mbps` : '', latest.rtt ? `${latest.rtt} ms` : ''].filter(Boolean).join(' · ')
-        const badge = (ok: boolean, yes: string, no: string, warn = false) => `<span style="padding:3px 9px;border-radius:999px;font-size:11px;font-weight:700;white-space:nowrap;background:${ok ? '#eaf8f0' : warn ? '#fff4db' : '#f3f6fb'};color:${ok ? '#17804c' : warn ? '#925800' : '#5b6b84'}">${ok ? yes : no}</span>`
-        const row = (title: string, sub: string, right: string) => `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 14px;border-radius:14px;background:#f7faff;border:1px solid #e6edf8"><div><div style="font-size:13px;font-weight:700;color:#182842">${title}</div><div style="font-size:12px;color:#5b6b84;margin-top:2px;overflow-wrap:anywhere">${sub}</div></div>${right}</div>`
-        modal.innerHTML = `<section class="sheet" role="dialog" aria-modal="true" aria-labelledby="net-modal-title" style="width:min(500px,94%);padding:26px;border-radius:26px;background:#fff;color:#182842;font-family:Inter,system-ui,sans-serif;box-shadow:0 24px 60px -16px rgba(11,26,58,.28);display:grid;gap:14px">
+        const done = SC.done; SC.done = () => { const screen = done(); screen.after = () => { const e = w.document.querySelector('.cdw'); if (e) { e.innerHTML = '<button class="pill">Grade another</button>'; e.querySelector('button')!.onclick = () => w.eval('fresh()') } }; return screen }
+        api(w).R()
+        if (tabletEntry) w.document.addEventListener('pointerdown', () => {
+          if (!document.fullscreenElement) void document.documentElement.requestFullscreen?.().catch(() => { })
+        }, { once: true, capture: true })
+        if (!w.document.getElementById('te-net-pill')) {
+          const pill = w.document.createElement('button')
+          pill.type = 'button'
+          pill.id = 'te-net-pill'
+          pill.setAttribute('aria-live', 'polite')
+          pill.setAttribute('aria-label', 'View network and connection details')
+          pill.style.cssText = 'position:fixed;right:12px;bottom:10px;z-index:25;pointer-events:auto;cursor:pointer;display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:999px;font:700 11px/1.2 Inter,system-ui,sans-serif;background:rgba(255,255,255,.94);color:#182842;border:1px solid rgba(18,59,112,.16);box-shadow:0 2px 10px rgba(18,59,112,.12);backdrop-filter:blur(6px)'
+          w.document.body.append(pill)
+          const barsSvg = (bars: number, color: string) => `<svg width="14" height="12" viewBox="0 0 14 12" aria-hidden="true">${[0, 1, 2].map(i => `<rect x="${i * 5}" y="${8 - i * 3}" width="3" height="${4 + i * 3}" rx="1" fill="${i < bars ? color : '#cbd5e1'}"/>`).join('')}</svg>`
+          let latest = { piOk: false, piMs: 0, camOk: false, sashiboOk: false, tailOk: false, cloudOk: false, bars: 0, color: '#dc2626', label: 'Checking…', rtt: 0 }
+          const renderModal = () => {
+            const modal = w.document.getElementById('te-net-modal')
+            if (!modal) return
+            const settings = getPiSettings()
+            const pendingCount = loadRecords().filter(r => r.transaction?.syncState !== 'synced').length
+            const conn = (navigator as unknown as { connection?: { effectiveType?: string; downlink?: number; rtt?: number } }).connection
+            const netDetail = [navigator.onLine ? 'Online' : 'Offline', conn?.effectiveType?.toUpperCase(), conn?.downlink ? `${conn.downlink} Mbps` : '', latest.rtt ? `${latest.rtt} ms` : ''].filter(Boolean).join(' · ')
+            const badge = (ok: boolean, yes: string, no: string, warn = false) => `<span style="padding:3px 9px;border-radius:999px;font-size:11px;font-weight:700;white-space:nowrap;background:${ok ? '#eaf8f0' : warn ? '#fff4db' : '#f3f6fb'};color:${ok ? '#17804c' : warn ? '#925800' : '#5b6b84'}">${ok ? yes : no}</span>`
+            const row = (title: string, sub: string, right: string) => `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 14px;border-radius:14px;background:#f7faff;border:1px solid #e6edf8"><div><div style="font-size:13px;font-weight:700;color:#182842">${title}</div><div style="font-size:12px;color:#5b6b84;margin-top:2px;overflow-wrap:anywhere">${sub}</div></div>${right}</div>`
+            modal.innerHTML = `<section class="sheet" role="dialog" aria-modal="true" aria-labelledby="net-modal-title" style="width:min(500px,94%);padding:26px;border-radius:26px;background:#fff;color:#182842;font-family:Inter,system-ui,sans-serif;box-shadow:0 24px 60px -16px rgba(11,26,58,.28);display:grid;gap:14px">
           <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
             <div style="display:flex;align-items:center;gap:10px">${barsSvg(latest.bars, latest.color)}<h2 id="net-modal-title" style="margin:0;font-size:20px;letter-spacing:-.02em">Connection details</h2></div>
             <button type="button" id="net-close" style="height:34px;padding:0 14px;border-radius:999px;border:1px solid #d7e2f4;background:#f5f8ff;color:#182842;font:600 13px Inter,system-ui,sans-serif;cursor:pointer">Close</button>
@@ -482,156 +611,156 @@ const runtime = {
             ${pendingCount > 0 && latest.cloudOk ? '<button type="button" id="net-sync" style="height:42px;padding:0 20px;border-radius:999px;border:0;background:linear-gradient(135deg,#3b8bff,#1d5ef0);color:#fff;font:600 14px Inter,system-ui,sans-serif;cursor:pointer">Sync now</button>' : ''}
           </div>
         </section>`
-        modal.querySelector<HTMLButtonElement>('#net-close')!.onclick = () => modal.remove()
-        modal.querySelector<HTMLButtonElement>('#net-refresh')!.onclick = () => { void refreshNetPill() }
-        const syncBtn = modal.querySelector<HTMLButtonElement>('#net-sync')
-        if (syncBtn) syncBtn.onclick = async () => { syncBtn.disabled = true; syncBtn.textContent = 'Syncing…'; await runtime.sync(w); await refreshNetPill() }
-      }
-      pill.onclick = () => {
-        w.document.getElementById('te-net-modal')?.remove()
-        const modal = w.document.createElement('div')
-        modal.className = 'ovl'; modal.id = 'te-net-modal'
-        modal.onclick = event => { if (event.target === modal) modal.remove() }
-          ; (w.document.getElementById('stage') ?? w.document.body).append(modal)
-        renderModal()
-        void refreshNetPill()
-      }
-      const refreshNetPill = async () => {
-        if (!pill.isConnected) return
-        const settings = getPiSettings()
-        let piOk = false, piMs = 999, sashiboOk = false, tailOk = false, camOk = false
-        if (settings.configured) {
-          const started = performance.now()
-          try {
-            const res = await fetch(`${settings.apiUrl}/status`, { cache: 'no-store', credentials: settings.mode === 'hosted-gateway' ? 'include' : 'omit', signal: AbortSignal.timeout(2500) })
-            piOk = res.ok
-            piMs = Math.round(performance.now() - started)
-            if (res.ok) {
-              const data = await res.json().catch(() => null) as { models?: { sashibocore?: boolean; tailcut?: boolean } } | null
-              sashiboOk = data?.models?.sashibocore === true
-              tailOk = data?.models?.tailcut === true
-            }
-          } catch { piOk = false }
-          if (settings.snapshotUrl) {
-            try {
-              const camRes = await fetch(settings.snapshotUrl, { cache: 'no-store', credentials: settings.mode === 'hosted-gateway' ? 'include' : 'omit', signal: AbortSignal.timeout(2500) })
-              camOk = camRes.ok && (camRes.headers.get('content-type') ?? '').startsWith('image/')
-            } catch { camOk = false }
+            modal.querySelector<HTMLButtonElement>('#net-close')!.onclick = () => modal.remove()
+            modal.querySelector<HTMLButtonElement>('#net-refresh')!.onclick = () => { void refreshNetPill() }
+            const syncBtn = modal.querySelector<HTMLButtonElement>('#net-sync')
+            if (syncBtn) syncBtn.onclick = async () => { syncBtn.disabled = true; syncBtn.textContent = 'Syncing…'; await runtime.sync(w); await refreshNetPill() }
           }
+          pill.onclick = () => {
+            w.document.getElementById('te-net-modal')?.remove()
+            const modal = w.document.createElement('div')
+            modal.className = 'ovl'; modal.id = 'te-net-modal'
+            modal.onclick = event => { if (event.target === modal) modal.remove() }
+              ; (w.document.getElementById('stage') ?? w.document.body).append(modal)
+            renderModal()
+            void refreshNetPill()
+          }
+          const refreshNetPill = async () => {
+            if (!pill.isConnected) return
+            const settings = getPiSettings()
+            let piOk = false, piMs = 999, sashiboOk = false, tailOk = false, camOk = false
+            if (settings.configured) {
+              const started = performance.now()
+              try {
+                const res = await fetch(`${settings.apiUrl}/status`, { cache: 'no-store', credentials: settings.mode === 'hosted-gateway' ? 'include' : 'omit', signal: AbortSignal.timeout(2500) })
+                piOk = res.ok
+                piMs = Math.round(performance.now() - started)
+                if (res.ok) {
+                  const data = await res.json().catch(() => null) as { models?: { sashibocore?: boolean; tailcut?: boolean } } | null
+                  sashiboOk = data?.models?.sashibocore === true
+                  tailOk = data?.models?.tailcut === true
+                }
+              } catch { piOk = false }
+              if (settings.snapshotUrl) {
+                try {
+                  const camRes = await fetch(settings.snapshotUrl, { cache: 'no-store', credentials: settings.mode === 'hosted-gateway' ? 'include' : 'omit', signal: AbortSignal.timeout(2500) })
+                  camOk = camRes.ok && (camRes.headers.get('content-type') ?? '').startsWith('image/')
+                } catch { camOk = false }
+              }
+            }
+            const cloudOk = navigator.onLine && isSupabaseConfigured() ? await checkCloudConnection().catch(() => false) : false
+            const connRtt = (navigator as unknown as { connection?: { rtt?: number } }).connection?.rtt ?? 120
+            const rtt = piOk ? piMs : connRtt
+            const bars = !navigator.onLine && !piOk ? 0 : rtt < 100 ? 3 : rtt < 300 ? 2 : 1
+            const color = piOk ? '#16a34a' : cloudOk ? '#2563eb' : navigator.onLine ? '#d97706' : '#dc2626'
+            const label = piOk
+              ? (cloudOk ? 'TunaRpi · Inference ON · Cloud ready' : 'TunaRpi · Saved locally · Inference ON')
+              : cloudOk
+                ? 'Wi-Fi · Cloud ready'
+                : (navigator.onLine ? 'Wi-Fi · Saved locally' : 'Offline · Saved locally')
+            latest = { piOk, piMs, camOk, sashiboOk, tailOk, cloudOk, bars, color, label, rtt }
+            latest = { piOk, piMs, camOk, sashiboOk, tailOk, cloudOk, bars, color, label, rtt }
+            pill.innerHTML = `${barsSvg(bars, color)}<span>${label}</span>`
+            renderModal()
+          }
+          void refreshNetPill()
+          const netTimer = w.setInterval(() => { void refreshNetPill() }, 15_000)
+          const onNet = () => { void refreshNetPill() }
+          window.addEventListener('online', onNet)
+          window.addEventListener('offline', onNet)
+          w.addEventListener('pagehide', () => { w.clearInterval(netTimer); window.removeEventListener('online', onNet); window.removeEventListener('offline', onNet) }, { once: true })
         }
-        const cloudOk = navigator.onLine && isSupabaseConfigured() ? await checkCloudConnection().catch(() => false) : false
-        const connRtt = (navigator as unknown as { connection?: { rtt?: number } }).connection?.rtt ?? 120
-        const rtt = piOk ? piMs : connRtt
-        const bars = !navigator.onLine && !piOk ? 0 : rtt < 100 ? 3 : rtt < 300 ? 2 : 1
-        const color = piOk ? '#16a34a' : cloudOk ? '#2563eb' : navigator.onLine ? '#d97706' : '#dc2626'
-        const label = piOk
-          ? (cloudOk ? 'TunaRpi · Inference ON · Cloud ready' : 'TunaRpi · Saved locally · Inference ON')
-          : cloudOk
-            ? 'Wi-Fi · Cloud ready'
-            : (navigator.onLine ? 'Wi-Fi · Saved locally' : 'Offline · Saved locally')
-        latest = { piOk, piMs, camOk, sashiboOk, tailOk, cloudOk, bars, color, label, rtt }
-        latest = { piOk, piMs, camOk, sashiboOk, tailOk, cloudOk, bars, color, label, rtt }
-        pill.innerHTML = `${barsSvg(bars, color)}<span>${label}</span>`
-        renderModal()
-      }
-      void refreshNetPill()
-      const netTimer = w.setInterval(() => { void refreshNetPill() }, 15_000)
-      const onNet = () => { void refreshNetPill() }
-      window.addEventListener('online', onNet)
-      window.addEventListener('offline', onNet)
-      w.addEventListener('pagehide', () => { w.clearInterval(netTimer); window.removeEventListener('online', onNet); window.removeEventListener('offline', onNet) }, { once: true })
-    }
-  },
+      },
 }
 
 export function launchExactUI(showBootDial = true) {
-  registerPwa()
-    ; (window as any).TunaEyeRuntime = runtime
-  let html = source
-  html = html.replace(/<link[^>]+fonts\.(?:googleapis|gstatic)\.com[^>]*rel=["']preconnect["'][^>]*>\s*/gi, '')
-  html = html.replace(/https:\/\/fonts\.googleapis\.com\/css2\?[^"'\s<>\\)]+/g, '/fonts/exact-ui.css')
-  if (experimentalPolicy) html = html.replaceAll('under 80%', 'outside acceptance policy').replaceAll('below 80%', 'outside acceptance policy').replaceAll('≥ 80%', 'accepted by policy').replaceAll('80% or above', 'accepted by policy')
-  html = html.replace(/gradeOf=\(\)=>lt\(S\.tail==null\?S\.core:\(S\.core\+S\.tail\)\/2\)/, 'gradeOf=()=>window.top.TunaEyeRuntime.grade()')
-  html = html.replace("lt=v=>v>=90?'A':v>=80?'B':'C'", 'lt=v=>window.top.TunaEyeRuntime.sampleGrade(v)')
-  html = html.replace('n>=20&&n<=200', 'n>=15&&n<=200').replaceAll('Minimum weight is 20 kg', 'Minimum weight is 15 kg').replaceAll('20–200 kg', '15–200 kg').replaceAll('Min 20 kg', 'Min 15 kg')
-  html = html.replaceAll('n<20', 'n<15').replaceAll('f&&f.size<=10485760&&shoot(k,f)', 'f&&shoot(k,f)').replace('tot=w*RATE[g]', 'tot=o.amount??w*RATE[g]')
-  html = html.replace(/async function camStart\(\)[\s\S]*?\nfunction camShot/, 'async function camStart(){return window.top.TunaEyeRuntime.camera(window)}\nfunction camShot')
-  html = html.replace(/async function shoot\(k,file\)[\s\S]*?\nconst rcpt=/, 'async function shoot(k,file){return window.top.TunaEyeRuntime.capture(window,k,file)}\nconst rcpt=')
-  html = html.replace(/function fin\(\)[^\n]*/, 'function fin(){window.top.TunaEyeRuntime.finish(window)}')
-  html = html.replace('pin:p=>p===\'1234\'', 'pin:p=>window.top.TunaEyeRuntime.pin(p,window)').replace('print:async()=>true', 'print:async()=>window.top.TunaEyeRuntime.print(window)')
-  html = html.replace('S.hist=ok?L:seedHist()', 'S.hist=[]').replace("S.cfg.demo=localStorage.getItem('te-demo')!=='0'", 'S.cfg.demo=false')
-  html = html.replace("setTimeout(()=>{if(S.scr==='receipt')printIt(fin)},650)", "const receiptPrintButton=$('#orb');setTimeout(()=>{if(S.scr==='receipt'&&$('#orb')===receiptPrintButton)printIt(fin)},1000)")
-  html = html.replaceAll('</head>', '<style>@media(pointer:coarse){.scr>*,.v5row>*,.ltvf,.ltside,.v5h,.med5-l,.dhero,.dsc,.dsr,.drow,.rcr,tr.r,.st,.vs,.sp5{animation-name:none!important}}</style></head>')
-  document.documentElement.style.cssText = 'height:100%;background:#f4f6fa'
-  document.body.style.cssText = 'margin:0;height:100dvh;overflow:hidden'
-  const frame = document.createElement('iframe'); frame.title = 'TunaEye'; frame.style.cssText = 'border:0;width:100%;height:100%;display:block'; frame.allow = 'fullscreen; camera; autoplay'; frame.srcdoc = html
-  document.body.replaceChildren(frame)
-  if (showBootDial) void showLoadingDial('Opening TunaEye')
-  let landingReady = false
-  const prepareLanding = () => {
-    const landing = frame.contentWindow as Kiosk
-    if (landingReady || !landing?.document.getElementById('kiosk-src') || typeof (landing as any).openKiosk !== 'function') return
-    landingReady = true
-    landing.document.addEventListener('click', event => {
-      if ((event.target as Element)?.closest('[data-act="install"]')) { event.preventDefault(); event.stopImmediatePropagation(); void requestPwaInstall().then(message => landing.alert(message)); return }
-      if ((event.target as Element)?.closest('[data-act="start"]')) void showLoadingDial('Opening grading kiosk')
-    }, true)
-    const tablet = navigator.maxTouchPoints > 0 && Math.min(screen.width, screen.height) >= 600 && (navigator.userAgent.includes('Android') || navigator.userAgent.includes('iPad') || navigator.platform === 'MacIntel')
-    if (tablet) {
-      tabletEntry = true
-      landing.eval('window.openKiosk()')
-      const fullscreen = () => { void document.documentElement.requestFullscreen?.().catch(() => { }); document.removeEventListener('pointerdown', fullscreen, true) }
-      void document.documentElement.requestFullscreen?.().catch(() => document.addEventListener('pointerdown', fullscreen, true))
+    registerPwa()
+  ; (window as any).TunaEyeRuntime = runtime
+let html = source
+html = html.replace(/<link[^>]+fonts\.(?:googleapis|gstatic)\.com[^>]*rel=["']preconnect["'][^>]*>\s*/gi, '')
+html = html.replace(/https:\/\/fonts\.googleapis\.com\/css2\?[^"'\s<>\\)]+/g, '/fonts/exact-ui.css')
+if (experimentalPolicy) html = html.replaceAll('under 80%', 'outside acceptance policy').replaceAll('below 80%', 'outside acceptance policy').replaceAll('≥ 80%', 'accepted by policy').replaceAll('80% or above', 'accepted by policy')
+html = html.replace(/gradeOf=\(\)=>lt\(S\.tail==null\?S\.core:\(S\.core\+S\.tail\)\/2\)/, 'gradeOf=()=>window.top.TunaEyeRuntime.grade()')
+html = html.replace("lt=v=>v>=90?'A':v>=80?'B':'C'", 'lt=v=>window.top.TunaEyeRuntime.sampleGrade(v)')
+html = html.replace('n>=20&&n<=200', 'n>=15&&n<=200').replaceAll('Minimum weight is 20 kg', 'Minimum weight is 15 kg').replaceAll('20–200 kg', '15–200 kg').replaceAll('Min 20 kg', 'Min 15 kg')
+html = html.replaceAll('n<20', 'n<15').replaceAll('f&&f.size<=10485760&&shoot(k,f)', 'f&&shoot(k,f)').replace('tot=w*RATE[g]', 'tot=o.amount??w*RATE[g]')
+html = html.replace(/async function camStart\(\)[\s\S]*?\nfunction camShot/, 'async function camStart(){return window.top.TunaEyeRuntime.camera(window)}\nfunction camShot')
+html = html.replace(/async function shoot\(k,file\)[\s\S]*?\nconst rcpt=/, 'async function shoot(k,file){return window.top.TunaEyeRuntime.capture(window,k,file)}\nconst rcpt=')
+html = html.replace(/function fin\(\)[^\n]*/, 'function fin(){window.top.TunaEyeRuntime.finish(window)}')
+html = html.replace('pin:p=>p===\'1234\'', 'pin:p=>window.top.TunaEyeRuntime.pin(p,window)').replace('print:async()=>true', 'print:async()=>window.top.TunaEyeRuntime.print(window)')
+html = html.replace('S.hist=ok?L:seedHist()', 'S.hist=[]').replace("S.cfg.demo=localStorage.getItem('te-demo')!=='0'", 'S.cfg.demo=false')
+html = html.replace("setTimeout(()=>{if(S.scr==='receipt')printIt(fin)},650)", "const receiptPrintButton=$('#orb');setTimeout(()=>{if(S.scr==='receipt'&&$('#orb')===receiptPrintButton)printIt(fin)},1000)")
+html = html.replaceAll('</head>', '<style>@media(pointer:coarse){.scr>*,.v5row>*,.ltvf,.ltside,.v5h,.med5-l,.dhero,.dsc,.dsr,.drow,.rcr,tr.r,.st,.vs,.sp5{animation-name:none!important}}</style></head>')
+document.documentElement.style.cssText = 'height:100%;background:#f4f6fa'
+document.body.style.cssText = 'margin:0;height:100dvh;overflow:hidden'
+const frame = document.createElement('iframe'); frame.title = 'TunaEye'; frame.style.cssText = 'border:0;width:100%;height:100%;display:block'; frame.allow = 'fullscreen; camera; autoplay'; frame.srcdoc = html
+document.body.replaceChildren(frame)
+if (showBootDial) void showLoadingDial('Opening TunaEye')
+let landingReady = false
+const prepareLanding = () => {
+  const landing = frame.contentWindow as Kiosk
+  if (landingReady || !landing?.document.getElementById('kiosk-src') || typeof (landing as any).openKiosk !== 'function') return
+  landingReady = true
+  landing.document.addEventListener('click', event => {
+    if ((event.target as Element)?.closest('[data-act="install"]')) { event.preventDefault(); event.stopImmediatePropagation(); void requestPwaInstall().then(message => landing.alert(message)); return }
+    if ((event.target as Element)?.closest('[data-act="start"]')) void showLoadingDial('Opening grading kiosk')
+  }, true)
+  const tablet = navigator.maxTouchPoints > 0 && Math.min(screen.width, screen.height) >= 600 && (navigator.userAgent.includes('Android') || navigator.userAgent.includes('iPad') || navigator.platform === 'MacIntel')
+  if (tablet) {
+    tabletEntry = true
+    landing.eval('window.openKiosk()')
+    const fullscreen = () => { void document.documentElement.requestFullscreen?.().catch(() => { }); document.removeEventListener('pointerdown', fullscreen, true) }
+    void document.documentElement.requestFullscreen?.().catch(() => document.addEventListener('pointerdown', fullscreen, true))
+  }
+}
+frame.addEventListener('load', prepareLanding)
+const showKioskFallback = (child: Kiosk, message: string) => {
+  const doc = child.document
+  if (!doc?.body || doc.getElementById('te-kiosk-fallback')) return
+  const card = doc.createElement('div')
+  card.id = 'te-kiosk-fallback'
+  card.style.cssText = 'position:fixed;inset:0;display:grid;place-items:center;padding:24px;background:#f4f7ff;font-family:Inter,system-ui,sans-serif;color:#182842'
+  card.innerHTML = `<section style="width:min(460px,94%);padding:28px;border-radius:24px;background:#fff;border:1px solid #dce6f6;box-shadow:0 20px 50px -18px rgba(18,59,112,.22);text-align:center"><h2 style="margin:0 0 8px;font-size:22px">Kiosk could not start</h2><p style="margin:0 0 18px;font-size:14px;color:#5b6b84;overflow-wrap:anywhere"></p><div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap"><button type="button" id="te-fb-back" style="height:44px;padding:0 18px;border-radius:999px;border:1px solid #d7e2f4;background:#f5f8ff;color:#182842;font:600 14px Inter,system-ui,sans-serif;cursor:pointer">Back to landing</button><button type="button" id="te-fb-reload" style="height:44px;padding:0 20px;border-radius:999px;border:0;background:#2563ff;color:#fff;font:600 14px Inter,system-ui,sans-serif;cursor:pointer">Reload kiosk</button></div></section>`
+  card.querySelector('p')!.textContent = message
+  card.querySelector<HTMLButtonElement>('#te-fb-reload')!.onclick = () => window.location.reload()
+  card.querySelector<HTMLButtonElement>('#te-fb-back')!.onclick = () => { try { (frame.contentWindow as any)?.closeKiosk?.() } catch { window.location.reload() } }
+  doc.body.replaceChildren(card)
+}
+const timer = setInterval(() => {
+  prepareLanding()
+  const child = frame.contentDocument?.querySelector<HTMLIFrameElement>('#kiosk-wrap iframe')?.contentWindow as Kiosk | null
+  if (child && !(child as any).__tunaeyeAttached) {
+    if (child.document.readyState !== 'complete') return
+    try { child.eval('S'); runtime.attach(child); (child as any).__tunaeyeAttached = true }
+    catch (error) {
+      (child as any).__tunaeyeAttached = true
+      console.error('Kiosk initialization failed', error)
+      showKioskFallback(child, error instanceof Error ? error.message : 'Kiosk initialization failed.')
     }
   }
-  frame.addEventListener('load', prepareLanding)
-  const showKioskFallback = (child: Kiosk, message: string) => {
-    const doc = child.document
-    if (!doc?.body || doc.getElementById('te-kiosk-fallback')) return
-    const card = doc.createElement('div')
-    card.id = 'te-kiosk-fallback'
-    card.style.cssText = 'position:fixed;inset:0;display:grid;place-items:center;padding:24px;background:#f4f7ff;font-family:Inter,system-ui,sans-serif;color:#182842'
-    card.innerHTML = `<section style="width:min(460px,94%);padding:28px;border-radius:24px;background:#fff;border:1px solid #dce6f6;box-shadow:0 20px 50px -18px rgba(18,59,112,.22);text-align:center"><h2 style="margin:0 0 8px;font-size:22px">Kiosk could not start</h2><p style="margin:0 0 18px;font-size:14px;color:#5b6b84;overflow-wrap:anywhere"></p><div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap"><button type="button" id="te-fb-back" style="height:44px;padding:0 18px;border-radius:999px;border:1px solid #d7e2f4;background:#f5f8ff;color:#182842;font:600 14px Inter,system-ui,sans-serif;cursor:pointer">Back to landing</button><button type="button" id="te-fb-reload" style="height:44px;padding:0 20px;border-radius:999px;border:0;background:#2563ff;color:#fff;font:600 14px Inter,system-ui,sans-serif;cursor:pointer">Reload kiosk</button></div></section>`
-    card.querySelector('p')!.textContent = message
-    card.querySelector<HTMLButtonElement>('#te-fb-reload')!.onclick = () => window.location.reload()
-    card.querySelector<HTMLButtonElement>('#te-fb-back')!.onclick = () => { try { (frame.contentWindow as any)?.closeKiosk?.() } catch { window.location.reload() } }
-    doc.body.replaceChildren(card)
-  }
-  const timer = setInterval(() => {
-    prepareLanding()
+}, 100)
+let lastAutoSyncAt = 0
+const autoSyncIfReachable = async () => {
+  if (!isSupabaseConfigured() || !navigator.onLine) return
+  if (Date.now() - lastAutoSyncAt < 60_000) return
+  if (!loadRecords().some(record => record.transaction?.syncState !== 'synced')) return
+  lastAutoSyncAt = Date.now()
+  if (!await checkCloudConnection()) return
+  const savedGraders = (() => { try { return JSON.parse(localStorage.getItem('tunaeye-graders') ?? '[]') as string[] } catch { return [] } })()
+  if (savedGraders.length) void syncGradersToCloud(savedGraders)
+  const result = await syncPendingRecords({ limit: 10 }).catch(() => null)
+  if (result && result.synced > 0) {
+    localStorage.setItem('tunaeye-last-sync', new Date().toISOString())
     const child = frame.contentDocument?.querySelector<HTMLIFrameElement>('#kiosk-wrap iframe')?.contentWindow as Kiosk | null
-    if (child && !(child as any).__tunaeyeAttached) {
-      if (child.document.readyState !== 'complete') return
-      try { child.eval('S'); runtime.attach(child); (child as any).__tunaeyeAttached = true }
-      catch (error) {
-        (child as any).__tunaeyeAttached = true
-        console.error('Kiosk initialization failed', error)
-        showKioskFallback(child, error instanceof Error ? error.message : 'Kiosk initialization failed.')
-      }
-    }
-  }, 100)
-  let lastAutoSyncAt = 0
-  const autoSyncIfReachable = async () => {
-    if (!isSupabaseConfigured() || !navigator.onLine) return
-    if (Date.now() - lastAutoSyncAt < 60_000) return
-    if (!loadRecords().some(record => record.transaction?.syncState !== 'synced')) return
-    lastAutoSyncAt = Date.now()
-    if (!await checkCloudConnection()) return
-    const savedGraders = (() => { try { return JSON.parse(localStorage.getItem('tunaeye-graders') ?? '[]') as string[] } catch { return [] } })()
-    if (savedGraders.length) void syncGradersToCloud(savedGraders)
-    const result = await syncPendingRecords({ limit: 10 }).catch(() => null)
-    if (result && result.synced > 0) {
-      localStorage.setItem('tunaeye-last-sync', new Date().toISOString())
-      const child = frame.contentDocument?.querySelector<HTMLIFrameElement>('#kiosk-wrap iframe')?.contentWindow as Kiosk | null
-      if (child && (child as any).__tunaeyeAttached) {
-        try { const { S, R } = api(child); S.hist = history(S.name); R() } catch { }
-      }
+    if (child && (child as any).__tunaeyeAttached) {
+      try { const { S, R } = api(child); S.hist = history(S.name); R() } catch { }
     }
   }
-  const onVisible = () => { if (document.visibilityState === 'visible') void autoSyncIfReachable() }
-  const onOnline = () => { void autoSyncIfReachable() }
-  window.addEventListener('online', onOnline)
-  document.addEventListener('visibilitychange', onVisible)
-  const syncTimer = setInterval(() => { void autoSyncIfReachable() }, 30_000)
-  window.addEventListener('pagehide', () => { clearInterval(timer); clearInterval(syncTimer); window.removeEventListener('online', onOnline); document.removeEventListener('visibilitychange', onVisible) }, { once: true })
+}
+const onVisible = () => { if (document.visibilityState === 'visible') void autoSyncIfReachable() }
+const onOnline = () => { void autoSyncIfReachable() }
+window.addEventListener('online', onOnline)
+document.addEventListener('visibilitychange', onVisible)
+const syncTimer = setInterval(() => { void autoSyncIfReachable() }, 30_000)
+window.addEventListener('pagehide', () => { clearInterval(timer); clearInterval(syncTimer); window.removeEventListener('online', onOnline); document.removeEventListener('visibilitychange', onVisible) }, { once: true })
 }
