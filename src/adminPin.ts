@@ -21,7 +21,8 @@ function attempts(): { failures: number; until: number } {
   try { return JSON.parse(localStorage.getItem(ATTEMPTS) || 'null') || { failures: 0, until: 0 } } catch { return { failures: 0, until: 0 } }
 }
 export function adminPinConfigured(): boolean {
-  return Boolean(credential()) || Boolean(import.meta.env.DEV && ['localhost', '127.0.0.1', '127.0.0.2'].includes(location.hostname))
+  const isLocalStationHttp = typeof location !== 'undefined' && location.protocol === 'http:'
+  return Boolean(credential()) || isLocalStationHttp || import.meta.env.VITE_PI_LOCAL_HOSTED === 'true' || Boolean(import.meta.env.DEV && ['localhost', '127.0.0.1', '127.0.0.2'].includes(location.hostname))
 }
 export async function verifyAdminPin(pin: string): Promise<boolean> {
   const state = attempts()

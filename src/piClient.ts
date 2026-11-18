@@ -59,8 +59,15 @@ export const getPiSettings = () => {
     if (!gatewayUrl?.startsWith('https://')) return { mode: 'unconfigured', configured: false, apiUrl: '', cameraUrl: '', streamUrl: '', snapshotUrl: '' } satisfies PiSettings
     return { mode: 'hosted-gateway', configured: true, apiUrl: gatewayUrl, cameraUrl: gatewayUrl, streamUrl: `${gatewayUrl}/stream`, snapshotUrl: `${gatewayUrl}/snapshot` } satisfies PiSettings
   }
-  const apiUrl = (localStorage.getItem('tunaeye-rpi-url') || import.meta.env.VITE_PI_API_URL || DEFAULT_API_URL).replace(/\/$/, '')
-  const cameraUrl = (localStorage.getItem('tunaeye-camera-url') || import.meta.env.VITE_PI_CAMERA_URL || DEFAULT_CAMERA_URL).replace(/\/$/, '')
+  const isLocalLoopback = ['localhost', '127.0.0.1', '127.0.0.2'].includes(window.location.hostname)
+  const hostDefaultApi = window.location.protocol === 'http:' && !isLocalLoopback && window.location.hostname
+    ? `http://${window.location.hostname}:5000`
+    : (import.meta.env.VITE_PI_API_URL || DEFAULT_API_URL)
+  const hostDefaultCamera = window.location.protocol === 'http:' && !isLocalLoopback && window.location.hostname
+    ? `http://${window.location.hostname}:8080`
+    : (import.meta.env.VITE_PI_CAMERA_URL || DEFAULT_CAMERA_URL)
+  const apiUrl = (localStorage.getItem('tunaeye-rpi-url') || hostDefaultApi).replace(/\/$/, '')
+  const cameraUrl = (localStorage.getItem('tunaeye-camera-url') || hostDefaultCamera).replace(/\/$/, '')
   return { mode: 'development-local', configured: true, apiUrl, cameraUrl, streamUrl: `${cameraUrl}/stream`, snapshotUrl: `${cameraUrl}/snapshot` } satisfies PiSettings
 }
 

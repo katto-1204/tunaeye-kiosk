@@ -22,7 +22,7 @@ self.addEventListener('install', event => {
     if (!bundles.some(path => path.startsWith('/assets/'))) throw Error('Offline caching requires a production build.')
     await cache.addAll([...APP_SHELL.filter(path => path !== '/'), ...bundles])
     await cache.put('/', response)
-    // Wait for existing kiosk tabs to close; never swap the app underneath an active grading session.
+    await self.skipWaiting()
   })())
 })
 
@@ -43,9 +43,17 @@ self.addEventListener('fetch', event => {
   if (url.pathname.startsWith('/src/') || url.pathname.includes('/@') || url.pathname.includes('hot-update')) return
 
   if (request.mode === 'navigate') {
-    event.respondWith(caches.open(CACHE).then(async cache =>
-      (await cache.match('/', { ignoreVary: true })) || fetch(request)
-    ))
+    event.respondWith((async () => {
+      const cache = await caches.open(CACHE)
+      try {
+        const fresh = await fetch('/', { cache: 'no-store' })
+        if (fresh.ok && fresh.headers.get('content-type')?.includes('text/html')) {
+          await cache.put('/', fresh.clone())
+          return fresh
+        }
+      } catch { /* Offline: fall back to cached shell. */ }
+      return (await cache.match('/', { ignoreVary: true })) || fetch(request)
+    })())
     return
   }
   if (!APP_SHELL.includes(url.pathname) && !/^\/(?:assets|fonts|new-ui)\//.test(url.pathname)) return
