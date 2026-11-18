@@ -147,10 +147,11 @@ const runtime = {
         blob = file
       } else {
         const videoEl = w.document.getElementById('vid')
-        if (activeCameraSource !== 'pi' && videoEl instanceof w.HTMLVideoElement && videoEl.videoWidth > 0) {
+        if (activeCameraSource !== 'pi' && videoEl?.tagName === 'VIDEO' && (videoEl as HTMLVideoElement).videoWidth > 0) {
+          const vid = videoEl as HTMLVideoElement
           const canvas = w.document.createElement('canvas')
-          canvas.width = videoEl.videoWidth; canvas.height = videoEl.videoHeight
-          canvas.getContext('2d')!.drawImage(videoEl, 0, 0)
+          canvas.width = vid.videoWidth; canvas.height = vid.videoHeight
+          canvas.getContext('2d')!.drawImage(vid, 0, 0)
           const captured = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.92))
           if (!captured || captured.size === 0) throw new Error('Could not capture frame from selected camera.')
           blob = captured
@@ -337,6 +338,46 @@ const runtime = {
           const button = d.getElementById('go'); if (button) button.onclick = () => void verify()
         }
         if (sync) sync.onclick = () => void runtime.sync(w)
+        if (S.scr !== 'core' && S.scr !== 'tail') stopLocalStream()
+        if ((S.scr === 'core' || S.scr === 'tail') && !isDemoMode()) {
+          const side = d.querySelector<HTMLElement>('.ltside'), shBtn = d.getElementById('sh')
+          if (side && shBtn && !d.getElementById('cam-chooser')) {
+            const box = d.createElement('div'); box.id = 'cam-chooser'
+            box.style.cssText = 'display:grid;gap:6px;margin:10px 0 6px;padding:10px 12px;border-radius:16px;background:#f4f8ff;border:1px solid #dbe6fa'
+            box.innerHTML = `<div style="display:flex;align-items:center;justify-content:space-between;font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.06em"><span>Camera source</span><button type="button" id="cam-trigger" style="padding:3px 9px;border-radius:999px;border:1px solid #c7d8fa;background:#fff;color:#2159e8;font:700 11px Inter,system-ui,sans-serif;cursor:pointer">Trigger ↻</button></div><select id="cam-select" aria-label="Available cameras" style="width:100%;height:34px;border-radius:10px;border:1px solid #cbd9ef;background:#fff;padding:0 10px;font:600 12.5px Inter,system-ui,sans-serif;color:#182842"></select>`
+            shBtn.before(box)
+            const sel = box.querySelector<HTMLSelectElement>('#cam-select')!
+            const trig = box.querySelector<HTMLButtonElement>('#cam-trigger')!
+            const populate = async () => {
+              const opts: Array<[string, string]> = [['pi', 'Pi camera (:8080)']]
+              if (navigator.mediaDevices?.enumerateDevices) {
+                try {
+                  const devs = (await navigator.mediaDevices.enumerateDevices()).filter(dev => dev.kind === 'videoinput')
+                  if (devs.length) devs.forEach((dev, idx) => opts.push([dev.deviceId || 'device', dev.label || `Camera ${idx + 1} (Browser)`]))
+                  else opts.push(['device', 'Device / DroidCam (Browser)'])
+                } catch { opts.push(['device', 'Device / DroidCam (Browser)']) }
+              } else {
+                opts.push(['device', 'Device / DroidCam (Browser)'])
+              }
+              sel.innerHTML = opts.map(([val, lbl]) => `<option value="${val}">${lbl}</option>`).join('')
+              sel.value = opts.some(([val]) => val === activeCameraSource) ? activeCameraSource : 'pi'
+            }
+            void populate()
+            sel.onchange = () => {
+              activeCameraSource = sel.value
+              localStorage.setItem('tunaeye-camera-source', activeCameraSource)
+              void runtime.camera(w)
+            }
+            trig.onclick = async () => {
+              if (sel.value !== 'pi' && navigator.mediaDevices?.getUserMedia) {
+                try { const s = await navigator.mediaDevices.getUserMedia({ video: true, audio: false }); s.getTracks().forEach(t => t.stop()); await populate() } catch { }
+              }
+              activeCameraSource = sel.value
+              localStorage.setItem('tunaeye-camera-source', activeCameraSource)
+              void runtime.camera(w)
+            }
+          }
+        }
         if (S.scr === 'final') {
           const button = d.getElementById('go')!
           const chip = d.querySelector('.v5h1 .v5c')
