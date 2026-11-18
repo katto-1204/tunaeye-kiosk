@@ -108,7 +108,7 @@ async function pruneVerifiedLocalRecords() {
           weight_kg: Number.parseFloat(record.weight) || null,
           grade: grade(record),
           confidence: record.result?.originalConfidence ?? null,
-          result_status: record.result?.status ?? record.status,
+          result_status: record.result?.provisional ? 'provisional' : (record.result?.status ?? record.status),
           original_grade: record.result?.originalGrade as 'A' | 'B' | 'C' | null | undefined,
           override_grade: record.result?.overrideGrade as 'A' | 'B' | 'C' | null | undefined,
           override_reason: record.result?.overrideReason || null,

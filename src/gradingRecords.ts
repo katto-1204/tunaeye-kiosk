@@ -15,7 +15,7 @@ export interface GradingRecord {
   capturedImage?: string
   capturedImageId?: string
   remoteImagePath?: string
-  result?: { status: string; originalGrade: string | null; originalConfidence: number | null; rawConfidence?: number; overrideGrade: string | null; overrideReason: string; overrideActor?: string; overrideAt?: string; inferenceId?: string; captureId?: string; scores?: Record<string, number>; imageType?: 'sashibocore' | 'tailcut'; modelSource?: 'raspberry-pi' | 'demo' }
+  result?: { status: string; originalGrade: string | null; originalConfidence: number | null; rawConfidence?: number; overrideGrade: string | null; overrideReason: string; overrideActor?: string; overrideAt?: string; inferenceId?: string; captureId?: string; scores?: Record<string, number>; imageType?: 'sashibocore' | 'tailcut'; modelSource?: 'raspberry-pi' | 'demo'; tailAvailability?: 'available' | 'not_available'; provisional?: boolean; reviewStatus?: 'confirmed' | 'manual_review' | 'provisional_review' }
   transaction?: { currency: string; unitRatePerKg?: number | null; amount: number | null; syncState: SyncState; lastSyncError?: string }
 }
 

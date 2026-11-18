@@ -43,6 +43,9 @@ export interface SampleResult {
   scores?: Record<string, number>
   imageType?: 'sashibocore' | 'tailcut'
   modelSource?: 'raspberry-pi' | 'demo'
+  tailAvailability?: 'available' | 'not_available'
+  provisional?: boolean
+  reviewStatus?: 'confirmed' | 'manual_review' | 'provisional_review'
 }
 
 export interface Session {
@@ -56,6 +59,7 @@ export interface Session {
   tutorialStep: number
   currentSampleIndex: number
   demoOutcome: DemoOutcome
+  tailAvailability?: 'pending' | 'available' | 'not_available'
   results: Partial<Record<SampleType, SampleResult>>
   adminPin: string
   adminError: string
@@ -75,6 +79,8 @@ export interface FinalDecision {
   source: GradeSource
   title: string
   detail: string
+  provisional?: boolean
+  reviewFlagged?: boolean
   next: 'print' | 'tail' | 'override' | 'retake' | 'wait'
 }
 
@@ -104,20 +110,28 @@ export function combineGrades(sashibo: SampleResult, tail: SampleResult): { grad
 export function decisionFor(state: Session): FinalDecision {
   const sashibo = state.results['Sashibo core']
   const tail = state.results['Tail cut']
+  const provisional = state.tailAvailability === 'not_available' || Boolean(sashibo?.provisional)
   if (!sashibo) return { grade: null, confidence: null, source: 'pending', title: 'Capture the sashibo core', detail: 'Sashibo core is the main sample for this fish.', next: 'wait' }
   if (sashibo.status === 'invalid') return { grade: null, confidence: sashibo.originalConfidence, source: 'retake', title: 'Retake the sashibo core', detail: 'This image cannot be graded. Capture it again inside the guide.', next: 'retake' }
-  if (sashibo.overrideGrade) return { grade: sashibo.overrideGrade, confidence: sashibo.originalConfidence, source: 'expert', title: `Grade ${sashibo.overrideGrade}`, detail: 'The expert grader set the final grade.', next: 'print' }
-  if (isAccepted(sashibo) && sashibo.originalGrade) {
-    return { grade: sashibo.originalGrade, confidence: sashibo.originalConfidence, source: 'sashibo', title: `Grade ${sashibo.originalGrade}`, detail: `Sashibo core is ${sashibo.originalConfidence}% confident, meets the acceptance policy (${policyDescription}). This grade is final. A tail cut is not needed.`, next: 'print' }
+  if (tail?.overrideGrade) return { grade: tail.overrideGrade, confidence: tail.originalConfidence, source: 'expert', title: `Grade ${tail.overrideGrade}`, detail: 'An authorized grader confirmed the final grade after review.', provisional: false, next: 'print' }
+  if (sashibo.overrideGrade) return { grade: sashibo.overrideGrade, confidence: sashibo.originalConfidence, source: 'expert', title: provisional ? `Grade ${sashibo.overrideGrade} (Provisional)` : `Grade ${sashibo.overrideGrade}`, detail: provisional ? 'Provisional Sashibo-only assessment confirmed by an authorized grader (Tail-Cut not available).' : 'An authorized grader confirmed the final grade.', provisional, next: 'print' }
+  if (provisional && !tail) {
+    return { grade: null, confidence: sashibo.originalConfidence, source: 'expert-needed', title: 'Provisional — Confirmation required', detail: `Sashibo Core is Grade ${sashibo.originalGrade ?? '—'} (${sashibo.originalConfidence ?? '—'}%). Tail-Cut is NOT AVAILABLE. Authorized grader confirmation is required before finalizing.`, provisional: true, reviewFlagged: true, next: 'override' }
   }
-  if (!tail) return { grade: sashibo.originalGrade, confidence: sashibo.originalConfidence, source: 'tail-needed', title: 'Tail cut needed', detail: `Sashibo core is ${sashibo.originalConfidence ?? '—'}% confident, does not meet the acceptance policy. Capture a tail-cut sample before the grade is final.`, next: 'tail' }
+  if (!tail) return { grade: sashibo.originalGrade, confidence: sashibo.originalConfidence, source: 'tail-needed', title: 'Is a Tail-Cut sample available?', detail: `Sashibo Core is Grade ${sashibo.originalGrade ?? '—'} (${sashibo.originalConfidence ?? '—'}%). Scan Tail-Cut if available, or continue provisionally.`, next: 'tail' }
   if (tail.status === 'invalid') return { grade: null, confidence: tail.originalConfidence, source: 'retake', title: 'Retake the tail cut', detail: 'This tail-cut image cannot be graded. Capture it again inside the guide.', next: 'retake' }
-  if (tail.overrideGrade) return { grade: tail.overrideGrade, confidence: tail.originalConfidence, source: 'expert', title: `Grade ${tail.overrideGrade}`, detail: 'The expert grader set the final grade after model predictions required review.', next: 'print' }
-  if (isAccepted(tail) && tail.originalGrade && sashibo.originalGrade) {
-    const combined = combineGrades(sashibo, tail)
-    return { grade: combined.grade, confidence: tail.originalConfidence, source: 'combined', title: `Grade ${combined.grade}`, detail: `Tail cut is ${tail.originalConfidence}% confident. The final grade blends the sashibo core (${sashibo.originalGrade}, ${sashibo.originalConfidence}%) and tail cut (${tail.originalGrade}, ${tail.originalConfidence}%).`, next: 'print' }
+  const disagreement = Boolean(sashibo.originalGrade && tail.originalGrade && sashibo.originalGrade !== tail.originalGrade)
+  const lowConfidence = !isAccepted(sashibo) || !isAccepted(tail)
+  if (disagreement || lowConfidence) {
+    const reason = disagreement
+      ? `Model disagreement: Sashibo Core (${sashibo.originalGrade}, ${sashibo.originalConfidence ?? '—'}%) vs Tail-Cut (${tail.originalGrade}, ${tail.originalConfidence ?? '—'}%).`
+      : `Confidence below ${ACCEPT_CONFIDENCE}% review threshold (Sashibo Core ${sashibo.originalConfidence ?? '—'}%, Tail-Cut ${tail.originalConfidence ?? '—'}%).`
+    return { grade: null, confidence: tail.originalConfidence, source: 'expert-needed', title: 'Manual review required', detail: `${reason} An authorized grader must set the final grade.`, reviewFlagged: true, next: 'override' }
   }
-  return { grade: null, confidence: tail.originalConfidence, source: 'expert-needed', title: 'Expert grade required', detail: `Tail cut is ${tail.originalConfidence ?? '—'}% confident, does not meet the acceptance policy. An expert grader must set the final grade.`, next: 'override' }
+  if (sashibo.originalGrade && tail.originalGrade) {
+    return { grade: sashibo.originalGrade, confidence: sashibo.originalConfidence, source: 'combined', title: `Grade ${sashibo.originalGrade}`, detail: `Sashibo Core (${sashibo.originalGrade}, ${sashibo.originalConfidence}%) and Tail-Cut (${tail.originalGrade}, ${tail.originalConfidence}%) agree above the ${ACCEPT_CONFIDENCE}% threshold.`, next: 'print' }
+  }
+  return { grade: null, confidence: tail.originalConfidence, source: 'expert-needed', title: 'Expert grade required', detail: 'An authorized grader must confirm the final grade.', reviewFlagged: true, next: 'override' }
 }
 
 export const initialSession: Session = {
@@ -149,6 +163,7 @@ export type Action =
   | { type: 'setFishWeight'; fishId: string; value: string }
   | { type: 'setTutorialStep'; step: number }
   | { type: 'setDemoOutcome'; outcome: DemoOutcome }
+  | { type: 'setTailAvailability'; value: 'available' | 'not_available' }
   | { type: 'captured' }
   | { type: 'startAnalysis' }
   | { type: 'finishAnalysis'; outcome: DemoOutcome; grade?: Grade | null; confidence?: number | null; rawConfidence?: number; inferenceId?: string; captureId?: string; scores?: Record<string, number>; imageType?: 'sashibocore' | 'tailcut'; modelSource?: 'raspberry-pi' | 'demo' }
@@ -203,6 +218,23 @@ export function reducer(state: Session, action: Action): Session {
       return { ...state, tutorialStep: action.step }
     case 'setDemoOutcome':
       return { ...state, demoOutcome: action.outcome }
+    case 'setTailAvailability': {
+      const sashibo = state.results['Sashibo core']
+      const provisional = action.value === 'not_available'
+      return {
+        ...state,
+        tailAvailability: action.value,
+        results: sashibo ? {
+          ...state.results,
+          'Sashibo core': {
+            ...sashibo,
+            tailAvailability: action.value,
+            provisional,
+            reviewStatus: provisional ? 'provisional_review' : sashibo.reviewStatus,
+          },
+        } : state.results,
+      }
+    }
     case 'captured':
       return { ...state, screen: 'review' }
     case 'startAnalysis':

@@ -1,6 +1,6 @@
 import source from '../new ui/index (4).html?raw'
 import { capturePiImage, gradePiImage, getPiSettings, checkPiHealth, PiIntegrationError } from './piClient'
-import { initialSession, reducer, decisionFor, type Session, type SampleType, type Grade } from './kioskState'
+import { initialSession, reducer, decisionFor, ACCEPT_CONFIDENCE, type Session, type SampleType, type Grade } from './kioskState'
 import { saveCapturedEvidence, promoteCapturedEvidence, deleteCapturedEvidence } from './evidenceStorage'
 import { experimentalPolicy, policyDescription } from './gradingPolicy'
 import { sqliteSaveStatus } from './sqliteStore'
@@ -35,8 +35,22 @@ function history(graderName?: string) {
     return { id: core.id, ts: core.timestamp, w: parseFloat(core.weight), g: core.grade, loc: rows.every(r => r.transaction?.syncState === 'synced') ? 0 : 1, c: core.result?.originalConfidence, tl: tail?.result?.originalConfidence ?? null, n: core.grader, o: groups.size - i, amount: core.transaction?.amount, rate: core.transaction?.unitRatePerKg }
   })
 }
+function registerGrader(name: string) {
+  const clean = name.trim()
+  if (!clean) return
+  try {
+    const existing = JSON.parse(localStorage.getItem('tunaeye-graders') ?? '[]')
+    const list = Array.isArray(existing) ? existing.filter((x): x is string => typeof x === 'string' && x.trim().length > 0) : []
+    if (!list.some(item => item.toLocaleLowerCase() === clean.toLocaleLowerCase())) {
+      localStorage.setItem('tunaeye-graders', JSON.stringify([clean, ...list]))
+    }
+  } catch {
+    localStorage.setItem('tunaeye-graders', JSON.stringify([clean]))
+  }
+}
 function persist(w: Kiosk) {
   const { S } = api(w), decision = decisionFor(session)
+  registerGrader(S.name)
   const rows: GradingRecord[] = Object.values(session.results).map(result => {
     const grade = decision.next === 'print' ? decision.grade! : result!.originalGrade ?? 'Invalid'
     const isDemo = result!.modelSource === 'demo'
@@ -123,7 +137,37 @@ const runtime = {
       if (!isDemoMode()) { persist(w); saveMessage = await sqliteSaveStatus() }
       const decision = decisionFor(session)
       if (decision.next === 'retake') { toast(decision.detail, 1); return }
-      go(decision.next === 'tail' ? 'tailneed' : 'final')
+      if (key === 'core') {
+        const d = w.document
+        d.getElementById('tail-avail-modal')?.remove()
+        const overlay = d.createElement('div'); overlay.className = 'ovl'; overlay.id = 'tail-avail-modal'
+        const below = result.confidence !== null && result.confidence < ACCEPT_CONFIDENCE
+        const chipBg = below ? '#fff4db' : '#eaf8f0', chipFg = below ? '#925800' : '#17804c'
+        overlay.innerHTML = `<section class="sheet" role="dialog" aria-modal="true" aria-labelledby="ta-title" style="width:min(480px,94%);padding:28px;border-radius:26px;background:#fff;color:#182842;font-family:Inter,system-ui,sans-serif;box-shadow:0 24px 60px -16px rgba(11,26,58,.28)">
+          <div style="display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:999px;background:${chipBg};color:${chipFg};font-size:12px;font-weight:700;margin-bottom:14px">Sashibo Core · Grade ${result.grade ?? '—'} · ${result.confidence ?? '—'}%${below ? ` (Below ${ACCEPT_CONFIDENCE}%)` : ''}</div>
+          <h2 id="ta-title" style="margin:0 0 8px;font-size:24px;letter-spacing:-.025em;line-height:1.2">Is a Tail-Cut sample available?</h2>
+          <p style="margin:0 0 22px;font-size:14px;line-height:1.5;color:#5b6b84">Scan a Tail-Cut sample if available. If not, this assessment will be marked <b>PROVISIONAL</b> and require authorized grader confirmation.</p>
+          <div style="display:grid;gap:10px">
+            <button type="button" id="ta-yes" style="width:100%;height:50px;border-radius:999px;border:0;background:linear-gradient(135deg,#3b8bff,#1d5ef0);color:#fff;font:600 15px Inter,system-ui,sans-serif;cursor:pointer;box-shadow:0 10px 24px -10px rgba(33,89,232,.65)">Yes — Scan Tail-Cut</button>
+            <button type="button" id="ta-no" style="width:100%;height:48px;border-radius:999px;border:1px solid #d7e2f4;background:#f5f8ff;color:#182842;font:600 14px Inter,system-ui,sans-serif;cursor:pointer">No — Continue without Tail-Cut</button>
+          </div>
+        </section>`
+          ; (d.getElementById('stage') ?? d.body).append(overlay)
+        overlay.querySelector<HTMLButtonElement>('#ta-yes')!.onclick = () => {
+          overlay.remove()
+          session = reducer(session, { type: 'setTailAvailability', value: 'available' })
+          go('tail')
+        }
+        overlay.querySelector<HTMLButtonElement>('#ta-no')!.onclick = () => {
+          overlay.remove()
+          session = reducer(session, { type: 'setTailAvailability', value: 'not_available' })
+          if (!isDemoMode()) persist(w)
+          go('final')
+        }
+        if (saveMessage) toast(saveMessage)
+        return
+      }
+      go('final')
       if (saveMessage) toast(saveMessage)
     } catch (error) {
       if (error instanceof PiIntegrationError && error.status === 422) {
@@ -161,15 +205,31 @@ const runtime = {
   },
   override(w: Kiosk) {
     const { S, go, toast } = api(w), d = w.document
+    const sashibo = session.results['Sashibo core'], tail = session.results['Tail cut']
+    const isProvisional = session.tailAvailability === 'not_available' && !tail
+    const defaultGrade: Grade = sashibo?.originalGrade ?? 'A'
     const overlay = d.createElement('div'); overlay.className = 'ovl'
-    overlay.innerHTML = '<div class="sheet" role="dialog" aria-modal="true" aria-label="Manual override"><h2>Expert override</h2><label>Station PIN<input class="fi" id="expert-pin" type="password" inputmode="numeric" maxlength="4"></label><div class="g3">' + ['A', 'B', 'C'].map(g => `<button class="gopt" data-grade="${g}">${g}</button>`).join('') + '</div><input class="fi" id="expert-reason" placeholder="Reason for override"><div class="mf"><button class="xbn bo" id="expert-cancel">Cancel</button><button class="xpr" id="expert-save">Save override</button></div></div>'
-    d.getElementById('stage')!.append(overlay); let selected: Grade = 'A'
+    overlay.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="Manual override" style="width:min(500px,94%);padding:28px;border-radius:26px;display:grid;gap:14px">
+      <div><h2 style="margin:0 0 4px;font-size:24px;letter-spacing:-.025em">${isProvisional ? 'Confirm provisional grade' : 'Expert override'}</h2><p style="margin:0;font-size:13px;color:#5b6b84">Sashibo Core: <b>Grade ${sashibo?.originalGrade ?? '—'}</b> (${sashibo?.originalConfidence ?? '—'}%)${tail ? ` · Tail-Cut: <b>Grade ${tail.originalGrade ?? '—'}</b> (${tail.originalConfidence ?? '—'}%)` : ' · Tail-Cut: <b>NOT AVAILABLE</b>'}</p></div>
+      <label style="display:grid;gap:6px;font-size:13px;font-weight:600;color:#475569">Station PIN<input class="fi" id="expert-pin" type="password" inputmode="numeric" maxlength="4" placeholder="4-digit PIN"></label>
+      <div><div style="font-size:13px;font-weight:600;color:#475569;margin-bottom:6px">Final grade</div><div class="g3" style="margin:0">${(['A', 'B', 'C'] as Grade[]).map(g => `<button type="button" class="gopt${g === defaultGrade ? ' on' : ''}" data-grade="${g}">${g}</button>`).join('')}</div></div>
+      <label style="display:grid;gap:6px;font-size:13px;font-weight:600;color:#475569">Reason<input class="fi" id="expert-reason" placeholder="Reason for confirmation or override (required)"></label>
+      <div class="mf" style="margin-top:6px;display:flex;gap:10px;justify-content:flex-end"><button type="button" class="xbn bo" id="expert-cancel" style="border-radius:999px;padding:0 20px">Cancel</button><button type="button" class="xpr" id="expert-save" style="border-radius:999px;padding:0 22px">${isProvisional ? 'Confirm final grade' : 'Save override'}</button></div>
+    </div>`
+    d.getElementById('stage')!.append(overlay); let selected: Grade = defaultGrade
     overlay.querySelectorAll<HTMLButtonElement>('[data-grade]').forEach(b => b.onclick = () => { selected = b.dataset.grade as Grade; overlay.querySelectorAll('[data-grade]').forEach(x => x.classList.toggle('on', x === b)) })
     overlay.querySelector<HTMLButtonElement>('#expert-cancel')!.onclick = () => overlay.remove()
     overlay.querySelector<HTMLButtonElement>('#expert-save')!.onclick = async () => {
+      const reasonInput = overlay.querySelector('#expert-reason') as HTMLInputElement
+      const reason = reasonInput.value.trim()
+      if (!reason) { toast('Enter a reason before confirming or overriding the grade.', 1); reasonInput.focus(); return }
       if (!await runtime.pin((overlay.querySelector('#expert-pin') as HTMLInputElement).value)) { toast('Incorrect PIN or hosted admin authorization required.', 1); return }
       const sample = session.results['Tail cut'] ? 'Tail cut' : 'Sashibo core'
-      session = reducer(session, { type: 'setOverride', sample, grade: selected, reason: (overlay.querySelector('#expert-reason') as HTMLInputElement).value, actor: S.name, timestamp: new Date().toISOString() }); if (!isDemoMode()) persist(w); overlay.remove(); go('receipt')
+      session = reducer(session, { type: 'setOverride', sample, grade: selected, reason, actor: S.name, timestamp: new Date().toISOString() })
+      const updated = session.results[sample]
+      if (updated) session = { ...session, results: { ...session.results, [sample]: { ...updated, reviewStatus: 'confirmed', provisional: isProvisional, tailAvailability: isProvisional ? 'not_available' : 'available' } } }
+      if (!isDemoMode()) persist(w)
+      overlay.remove(); go('receipt')
     }
   },
   async print(w: Kiosk) {
@@ -190,13 +250,14 @@ const runtime = {
       const receiptOrder = Number(S.detail.o)
       if (!Number.isSafeInteger(receiptOrder) || receiptOrder < 1) throw new Error('The saved receipt order is unavailable.')
       const sample = (key: SampleType) => { const result = results[key]; return result ? { grade: result.originalGrade ?? 'Invalid', confidence: result.originalConfidence } : undefined }
-      return printThermalReceipt(w, { station: S.cfg.name, order: `TE_${String(receiptOrder).padStart(4, '0')}`, grader: anchor.grader, timestamp: anchor.timestamp, weight: parseFloat(anchor.weight), grade: decision.grade!, unitRatePerKg: prices.unitRatePerKg, total: prices.amount, core: sample('Sashibo core'), tail: sample('Tail cut'), demo: false })
+      return printThermalReceipt(w, { station: S.cfg.name, order: `TE_${String(receiptOrder).padStart(4, '0')}`, grader: anchor.grader, timestamp: anchor.timestamp, weight: parseFloat(anchor.weight), grade: decision.grade!, unitRatePerKg: prices.unitRatePerKg, total: prices.amount, core: sample('Sashibo core'), tail: sample('Tail cut'), provisional: Boolean(decision.provisional), tailAvailable: Boolean(results['Tail cut']), demo: false })
     }
-    if (decisionFor(session).next !== 'print') throw new Error('An expert must confirm the final grade.')
-    const grade = decisionFor(session).grade!, saved = loadRecords().find(record => record.sessionId === sessionId)
+    const currentDecision = decisionFor(session)
+    if (currentDecision.next !== 'print') throw new Error('An expert must confirm the final grade.')
+    const grade = currentDecision.grade!, saved = loadRecords().find(record => record.sessionId === sessionId)
     const prices = saved?.transaction ?? priceSnapshot(grade, S.w)
     const sample = (key: SampleType) => { const result = session.results[key]; return result ? { grade: result.originalGrade ?? 'Invalid', confidence: result.originalConfidence } : undefined }
-    return printThermalReceipt(w, { station: S.cfg.name, order: `TE_${String(S.order).padStart(4, '0')}`, grader: S.name, timestamp: S.captureTime ?? Date.now(), weight: S.w, grade, unitRatePerKg: prices.unitRatePerKg ?? null, total: prices.amount, core: sample('Sashibo core'), tail: sample('Tail cut'), demo: isDemoMode() })
+    return printThermalReceipt(w, { station: S.cfg.name, order: `TE_${String(S.order).padStart(4, '0')}`, grader: S.name, timestamp: S.captureTime ?? Date.now(), weight: S.w, grade, unitRatePerKg: prices.unitRatePerKg ?? null, total: prices.amount, core: sample('Sashibo core'), tail: sample('Tail cut'), provisional: Boolean(currentDecision.provisional), tailAvailable: session.tailAvailability !== 'not_available', demo: isDemoMode() })
   },
   finish(w: Kiosk) { const { S, go } = api(w); S.hist = history(S.name); go('done') },
   attach(w: Kiosk) {
@@ -234,9 +295,24 @@ const runtime = {
         if (sync) sync.onclick = () => void runtime.sync(w)
         if (S.scr === 'final') {
           const button = d.getElementById('go')!
-          if (decision.next === 'override') { d.querySelector('.v5h h1')!.textContent = 'Expert grade required'; button.textContent = 'Set final grade'; button.onclick = () => runtime.override(w); d.querySelectorAll('.med5-l,.gt5,.gs5').forEach(e => e.textContent = '—') }
-          else button.onclick = () => { if (decision.next === 'print') api(w).go('receipt') }
-          d.querySelectorAll('.lg5').forEach(e => e.textContent = `Model predictions · ${policyDescription}`)
+          const chip = d.querySelector('.v5h1 .v5c')
+          if (decision.provisional && chip) { chip.className = 'v5c c-am'; chip.innerHTML = '<i></i>PROVISIONAL' }
+          if (decision.next === 'override') {
+            d.querySelector('.v5h h1')!.textContent = decision.provisional ? 'Provisional — Confirmation required' : 'Manual review required'
+            button.textContent = decision.provisional ? 'Confirm / Set final grade' : 'Set final grade'
+            button.onclick = () => runtime.override(w)
+            d.querySelectorAll('.med5-l,.gt5,.gs5').forEach(e => e.textContent = '—')
+          } else button.onclick = () => { if (decision.next === 'print') api(w).go('receipt') }
+          d.querySelectorAll('.lg5').forEach(e => e.textContent = decision.detail)
+          if (session.tailAvailability === 'not_available') {
+            d.querySelectorAll('.ph5-f span').forEach(el => { if (el.textContent?.includes('Tail')) el.textContent = 'Tail-Cut: NOT AVAILABLE' })
+          }
+        }
+        if (S.scr === 'receipt' && decision.provisional) {
+          const rHead = d.querySelector('.rc-h, .rh1')
+          if (rHead && !d.getElementById('provisional-receipt-tag')) {
+            const tag = d.createElement('div'); tag.id = 'provisional-receipt-tag'; tag.style.cssText = 'margin:6px 0;padding:4px 10px;border-radius:999px;background:#fff4db;color:#925800;font-size:11px;font-weight:800;display:inline-block'; tag.textContent = 'PROVISIONAL · TAIL-CUT NOT AVAILABLE'; rHead.after(tag)
+          }
         }
         const override = d.getElementById('ov'); if (override) override.onclick = () => runtime.override(w)
         d.querySelectorAll<HTMLElement>('#dmsw,[data-t="demo"]').forEach(e => { e.onclick = () => runtime.mode(w, !isDemoMode()); e.setAttribute('aria-checked', String(isDemoMode())) })
@@ -245,7 +321,12 @@ const runtime = {
           start.onclick = async event => {
             if (start.disabled) return
             start.disabled = true
-            try { if (isDemoMode() || await showLiveReadiness(w)) proceed?.call(start, event) }
+            try {
+              if (isDemoMode() || await showLiveReadiness(w)) {
+                registerGrader(S.name)
+                proceed?.call(start, event)
+              }
+            }
             finally { if (start.isConnected) start.disabled = !S.name.trim() }
           }
           if (isDemoMode()) {
@@ -281,23 +362,77 @@ const runtime = {
       if (!document.fullscreenElement) void document.documentElement.requestFullscreen?.().catch(() => { })
     }, { once: true, capture: true })
     if (!w.document.getElementById('te-net-pill')) {
-      const pill = w.document.createElement('div')
+      const pill = w.document.createElement('button')
+      pill.type = 'button'
       pill.id = 'te-net-pill'
       pill.setAttribute('aria-live', 'polite')
-      pill.style.cssText = 'position:fixed;right:12px;bottom:10px;z-index:25;pointer-events:none;display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;font:700 11px/1.2 Inter,system-ui,sans-serif;background:rgba(255,255,255,.92);color:#182842;border:1px solid rgba(18,59,112,.14);box-shadow:0 2px 8px rgba(18,59,112,.10);backdrop-filter:blur(6px)'
+      pill.setAttribute('aria-label', 'View network and connection details')
+      pill.style.cssText = 'position:fixed;right:12px;bottom:10px;z-index:25;pointer-events:auto;cursor:pointer;display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:999px;font:700 11px/1.2 Inter,system-ui,sans-serif;background:rgba(255,255,255,.94);color:#182842;border:1px solid rgba(18,59,112,.16);box-shadow:0 2px 10px rgba(18,59,112,.12);backdrop-filter:blur(6px)'
       w.document.body.append(pill)
       const barsSvg = (bars: number, color: string) => `<svg width="14" height="12" viewBox="0 0 14 12" aria-hidden="true">${[0, 1, 2].map(i => `<rect x="${i * 5}" y="${8 - i * 3}" width="3" height="${4 + i * 3}" rx="1" fill="${i < bars ? color : '#cbd5e1'}"/>`).join('')}</svg>`
+      let latest = { piOk: false, piMs: 0, camOk: false, sashiboOk: false, tailOk: false, cloudOk: false, bars: 0, color: '#dc2626', label: 'Checking…', rtt: 0 }
+      const renderModal = () => {
+        const modal = w.document.getElementById('te-net-modal')
+        if (!modal) return
+        const settings = getPiSettings()
+        const pendingCount = loadRecords().filter(r => r.transaction?.syncState !== 'synced').length
+        const conn = (navigator as unknown as { connection?: { effectiveType?: string; downlink?: number; rtt?: number } }).connection
+        const netDetail = [navigator.onLine ? 'Online' : 'Offline', conn?.effectiveType?.toUpperCase(), conn?.downlink ? `${conn.downlink} Mbps` : '', latest.rtt ? `${latest.rtt} ms` : ''].filter(Boolean).join(' · ')
+        const badge = (ok: boolean, yes: string, no: string, warn = false) => `<span style="padding:3px 9px;border-radius:999px;font-size:11px;font-weight:700;white-space:nowrap;background:${ok ? '#eaf8f0' : warn ? '#fff4db' : '#f3f6fb'};color:${ok ? '#17804c' : warn ? '#925800' : '#5b6b84'}">${ok ? yes : no}</span>`
+        const row = (title: string, sub: string, right: string) => `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 14px;border-radius:14px;background:#f7faff;border:1px solid #e6edf8"><div><div style="font-size:13px;font-weight:700;color:#182842">${title}</div><div style="font-size:12px;color:#5b6b84;margin-top:2px;overflow-wrap:anywhere">${sub}</div></div>${right}</div>`
+        modal.innerHTML = `<section class="sheet" role="dialog" aria-modal="true" aria-labelledby="net-modal-title" style="width:min(500px,94%);padding:26px;border-radius:26px;background:#fff;color:#182842;font-family:Inter,system-ui,sans-serif;box-shadow:0 24px 60px -16px rgba(11,26,58,.28);display:grid;gap:14px">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+            <div style="display:flex;align-items:center;gap:10px">${barsSvg(latest.bars, latest.color)}<h2 id="net-modal-title" style="margin:0;font-size:20px;letter-spacing:-.02em">Connection details</h2></div>
+            <button type="button" id="net-close" style="height:34px;padding:0 14px;border-radius:999px;border:1px solid #d7e2f4;background:#f5f8ff;color:#182842;font:600 13px Inter,system-ui,sans-serif;cursor:pointer">Close</button>
+          </div>
+          <div style="display:grid;gap:8px">
+            ${row('Raspberry Pi Station', settings.apiUrl || (settings.configured ? 'Same-origin station API' : 'Not configured for HTTPS'), badge(latest.piOk, `Connected · ${latest.piMs} ms`, 'Not reachable'))}
+            ${row('AI Models (V2)', latest.piOk ? `Sashibo Core: ${latest.sashiboOk ? 'Loaded' : 'Missing'} · Tail-Cut: ${latest.tailOk ? 'Loaded' : 'Missing'}` : 'Connect to TunaRpi to verify models', badge(latest.sashiboOk && latest.tailOk, 'Both loaded', latest.piOk ? 'Incomplete' : 'Unavailable', latest.piOk && !(latest.sashiboOk && latest.tailOk)))}
+            ${row('Pi Camera', settings.snapshotUrl || 'Same-origin /snapshot', badge(latest.camOk, 'Snapshot ready', latest.piOk ? 'No camera feed' : 'Standby', latest.piOk && !latest.camOk))}
+            ${row('Cloud Sync (Supabase)', `${pendingCount} record${pendingCount === 1 ? '' : 's'} pending sync`, badge(latest.cloudOk, 'Cloud ready', navigator.onLine ? 'Unreachable' : 'Offline'))}
+            ${row('Device Network', netDetail, badge(navigator.onLine, 'Wi-Fi / Net', 'Offline'))}
+          </div>
+          <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:2px">
+            <button type="button" id="net-refresh" style="height:42px;padding:0 18px;border-radius:999px;border:1px solid #d7e2f4;background:#f5f8ff;color:#182842;font:600 14px Inter,system-ui,sans-serif;cursor:pointer">Refresh</button>
+            ${pendingCount > 0 && latest.cloudOk ? '<button type="button" id="net-sync" style="height:42px;padding:0 20px;border-radius:999px;border:0;background:linear-gradient(135deg,#3b8bff,#1d5ef0);color:#fff;font:600 14px Inter,system-ui,sans-serif;cursor:pointer">Sync now</button>' : ''}
+          </div>
+        </section>`
+        modal.querySelector<HTMLButtonElement>('#net-close')!.onclick = () => modal.remove()
+        modal.querySelector<HTMLButtonElement>('#net-refresh')!.onclick = () => { void refreshNetPill() }
+        const syncBtn = modal.querySelector<HTMLButtonElement>('#net-sync')
+        if (syncBtn) syncBtn.onclick = async () => { syncBtn.disabled = true; syncBtn.textContent = 'Syncing…'; await runtime.sync(w); await refreshNetPill() }
+      }
+      pill.onclick = () => {
+        w.document.getElementById('te-net-modal')?.remove()
+        const modal = w.document.createElement('div')
+        modal.className = 'ovl'; modal.id = 'te-net-modal'
+        modal.onclick = event => { if (event.target === modal) modal.remove() }
+          ; (w.document.getElementById('stage') ?? w.document.body).append(modal)
+        renderModal()
+        void refreshNetPill()
+      }
       const refreshNetPill = async () => {
         if (!pill.isConnected) return
         const settings = getPiSettings()
-        let piOk = false, piMs = 999
+        let piOk = false, piMs = 999, sashiboOk = false, tailOk = false, camOk = false
         if (settings.configured) {
           const started = performance.now()
           try {
             const res = await fetch(`${settings.apiUrl}/status`, { cache: 'no-store', credentials: settings.mode === 'hosted-gateway' ? 'include' : 'omit', signal: AbortSignal.timeout(2500) })
             piOk = res.ok
             piMs = Math.round(performance.now() - started)
+            if (res.ok) {
+              const data = await res.json().catch(() => null) as { models?: { sashibocore?: boolean; tailcut?: boolean } } | null
+              sashiboOk = data?.models?.sashibocore === true
+              tailOk = data?.models?.tailcut === true
+            }
           } catch { piOk = false }
+          if (settings.snapshotUrl) {
+            try {
+              const camRes = await fetch(settings.snapshotUrl, { cache: 'no-store', credentials: settings.mode === 'hosted-gateway' ? 'include' : 'omit', signal: AbortSignal.timeout(2500) })
+              camOk = camRes.ok && (camRes.headers.get('content-type') ?? '').startsWith('image/')
+            } catch { camOk = false }
+          }
         }
         const cloudOk = navigator.onLine && isSupabaseConfigured() ? await checkCloudConnection().catch(() => false) : false
         const connRtt = (navigator as unknown as { connection?: { rtt?: number } }).connection?.rtt ?? 120
@@ -309,7 +444,10 @@ const runtime = {
           : cloudOk
             ? 'Wi-Fi · Cloud ready'
             : (navigator.onLine ? 'Wi-Fi · Saved locally' : 'Offline · Saved locally')
+        latest = { piOk, piMs, camOk, sashiboOk, tailOk, cloudOk, bars, color, label, rtt }
+        latest = { piOk, piMs, camOk, sashiboOk, tailOk, cloudOk, bars, color, label, rtt }
         pill.innerHTML = `${barsSvg(bars, color)}<span>${label}</span>`
+        renderModal()
       }
       void refreshNetPill()
       const netTimer = w.setInterval(() => { void refreshNetPill() }, 15_000)
