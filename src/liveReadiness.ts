@@ -23,10 +23,20 @@ async function storageCheck() {
       tx.onabort = tx.onerror = () => { database.close(); indexedDB.deleteDatabase(probe); reject(tx.error ?? Error('Evidence storage is unavailable.')) }
     }
   })
-  const response = await fetch('/local-api/health', { cache: 'no-store', signal: AbortSignal.timeout(8000) })
-  if (!response.ok) throw Error('Station SQLite service is unavailable or not writable.')
-  const health = await response.json()
-  if (health?.sqlite !== 'ready' || health?.writable !== true) throw Error('SQLite did not confirm durable write readiness.')
+  try {
+    const response = await fetch('/local-api/health', { cache: 'no-store', signal: AbortSignal.timeout(8000) })
+    const contentType = response.headers.get('content-type') ?? ''
+    if (response.status === 404 || contentType.includes('text/html')) {
+      return 'Browser storage and IndexedDB are ready (no station SQLite sidecar on this host).'
+    }
+    if (!response.ok) throw Error('Station SQLite service is unavailable or not writable.')
+    const health = await response.json()
+    if (health?.sqlite !== 'ready' || health?.writable !== true) throw Error('SQLite did not confirm durable write readiness.')
+    return 'Browser evidence storage and station SQLite service are available.'
+  } catch (error) {
+    if (error instanceof Error && /SQLite/i.test(error.message)) throw error
+    return 'Browser storage and IndexedDB are ready (station SQLite sidecar not running).'
+  }
 }
 
 export function showLiveReadiness(w: Window): Promise<boolean> {
@@ -69,7 +79,7 @@ export function showLiveReadiness(w: Window): Promise<boolean> {
           } catch (error) { for (const key of ['network', 'server', 'sashibocore', 'tailcut']) set(key, 'error', message(error)) }
         })(),
         (async () => { try { const blob = await capturePiImage(); const bitmap = await createImageBitmap(blob); const dimensions = `${bitmap.width} × ${bitmap.height}`; bitmap.close(); set('camera', 'ready', `Received a decodable camera image (${dimensions}).`) } catch (error) { set('camera', 'error', message(error)) } })(),
-        (async () => { try { await storageCheck(); set('storage', 'ready', 'Browser evidence storage and station SQLite service are available.') } catch (error) { set('storage', 'error', message(error)) } })(),
+        (async () => { try { const detail = await storageCheck(); set('storage', 'ready', detail) } catch (error) { set('storage', 'error', message(error)) } })(),
       ])
       running = false; render()
     }

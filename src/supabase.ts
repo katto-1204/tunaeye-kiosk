@@ -58,9 +58,9 @@ export const isSupabaseConfigured = () => Boolean(url && anonKey)
 export const CLOUD_CONNECTION_EVENT = 'tunaeye-cloud-connection'
 export class CloudUnavailableError extends Error {
   constructor() {
-    super(typeof navigator !== 'undefined' && navigator.onLine
-      ? 'Your internet is working, but the TunaEye cloud server could not be reached (check the Supabase project URL and that the project is active). Your captured images and records are saved on this device and will sync once the cloud server responds.'
-      : 'Sync is waiting for internet. Tuna RPi Wi-Fi can provide camera and grading access without internet. Your captured images and records are saved on this device. Use Sync now when internet is available.')
+    super(typeof navigator !== 'undefined' && !navigator.onLine
+      ? 'Offline — no network connection. Captured images and records are saved on this device and will sync when internet is available.'
+      : 'Cloud server could not be reached. If connected to the Tuna RPi Wi-Fi hotspot without internet, your captured images and records are saved on this device and will sync when internet is available. Otherwise check that the Supabase project is active.')
     this.name = 'CloudUnavailableError'
   }
 }

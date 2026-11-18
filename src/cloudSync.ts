@@ -18,6 +18,11 @@ function setSyncState(id: string, syncState: 'pending' | 'syncing' | 'synced' | 
 }
 
 export interface SyncSummary { synced: number; failed: number; skipped: number; waiting: number; firstError?: string }
+export type SyncPhase = 'offline' | 'connecting' | 'syncing' | 'synced' | 'failed'
+export const SYNC_STATUS_EVENT = 'tunaeye-sync-status'
+function emitSyncStatus(phase: SyncPhase, detail?: string) {
+  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(SYNC_STATUS_EVENT, { detail: { phase, detail } }))
+}
 
 let activeSync: Promise<SyncSummary> | null = null
 
@@ -63,10 +68,18 @@ async function runPendingSync(): Promise<SyncSummary> {
   if (!isSupabaseConfigured()) throw new Error('Supabase is missing from this build. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY, then redeploy or rebuild the kiosk.')
   const pending = loadRecords().filter(record => record.transaction?.syncState !== 'synced')
   const summary: SyncSummary = { synced: 0, failed: 0, skipped: 0, waiting: 0 }
-  if (!pending.length) return summary
-  await requireCloudConnection()
+  if (!pending.length) { emitSyncStatus('synced'); return summary }
+  emitSyncStatus('connecting')
+  try {
+    await requireCloudConnection()
+  } catch (error) {
+    if (isCloudNetworkError(error)) emitSyncStatus('offline', errorMessage(error))
+    else emitSyncStatus('failed', errorMessage(error))
+    throw error
+  }
   const supabase = getSupabase()
   const user = await ensureSupabaseUser()
+  emitSyncStatus('syncing')
 
   for (const record of pending) {
     setSyncState(record.id, 'syncing')
@@ -149,6 +162,7 @@ async function runPendingSync(): Promise<SyncSummary> {
   }
   await pruneVerifiedLocalRecords()
   await sqliteSaveStatus()
+  emitSyncStatus(summary.failed > 0 ? 'failed' : summary.waiting > 0 ? 'offline' : 'synced', summary.firstError)
   return summary
 }
 

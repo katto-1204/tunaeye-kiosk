@@ -6,8 +6,8 @@ import { experimentalPolicy, policyDescription } from './gradingPolicy'
 import { sqliteSaveStatus } from './sqliteStore'
 import { loadRecords, saveRecords, type GradingRecord } from './gradingRecords'
 import { loadPriceSchedule, priceSnapshot } from './pricing'
-import { syncPendingRecords, syncPriceSchedule } from './cloudSync'
-import { hasAdminProfile, isSupabaseConfigured, sendAdminMagicLink } from './supabase'
+import { syncPendingRecords, syncPriceSchedule, SYNC_STATUS_EVENT, type SyncPhase } from './cloudSync'
+import { checkCloudConnection, hasAdminProfile, isSupabaseConfigured, sendAdminMagicLink } from './supabase'
 import { createId } from './id'
 import { showLoadingDial } from './exact-loading'
 import { isDemoMode, setKioskDemoMode, demoScenarios, getDemoScenario, setDemoScenario, type DemoScenario } from './demoMode'
@@ -130,8 +130,27 @@ const runtime = {
   },
   async sync(w: Kiosk) {
     const { S, R, toast } = api(w)
-    try { const result = await syncPendingRecords(); if (result.synced > 0) localStorage.setItem('tunaeye-last-sync', new Date().toISOString()); S.hist = history(); R(); toast(result.firstError ?? `${result.synced} records verified in cloud`, result.failed || result.waiting ? 1 : 0) }
+    const button = w.document.getElementById('sy') as HTMLButtonElement | null
+    const originalText = button?.textContent ?? 'Sync'
+    const labelFor: Record<SyncPhase, string> = { offline: 'Offline', connecting: 'Connecting…', syncing: 'Syncing…', synced: 'Synced', failed: 'Failed' }
+    const onStatus = (event: Event) => {
+      const phase = (event as CustomEvent<{ phase: SyncPhase }>).detail?.phase
+      if (button?.isConnected && phase) button.textContent = labelFor[phase]
+    }
+    window.addEventListener(SYNC_STATUS_EVENT, onStatus)
+    if (button) { button.disabled = true; button.textContent = 'Connecting…' }
+    try {
+      const result = await syncPendingRecords()
+      if (result.synced > 0) localStorage.setItem('tunaeye-last-sync', new Date().toISOString())
+      S.hist = history(); R()
+      const msg = result.firstError ?? (result.synced > 0 ? `Synced: ${result.synced} record${result.synced === 1 ? '' : 's'} verified in cloud` : 'Synced: all records up to date')
+      toast(msg, result.failed || result.waiting ? 1 : 0)
+    }
     catch (error) { toast(error instanceof Error ? error.message : 'Cloud sync unavailable.', 1) }
+    finally {
+      window.removeEventListener(SYNC_STATUS_EVENT, onStatus)
+      if (button?.isConnected) { button.disabled = false; button.textContent = originalText }
+    }
   },
   override(w: Kiosk) {
     const { S, go, toast } = api(w), d = w.document
@@ -304,5 +323,23 @@ export function launchExactUI(showBootDial = true) {
       try { child.eval('S'); runtime.attach(child); (child as any).__tunaeyeAttached = true } catch (error) { console.error('Kiosk initialization failed', error) }
     }
   }, 100)
-  window.addEventListener('pagehide', () => clearInterval(timer), { once: true })
+  const autoSyncIfReachable = async () => {
+    if (!isSupabaseConfigured() || !navigator.onLine) return
+    if (!loadRecords().some(record => record.transaction?.syncState !== 'synced')) return
+    if (!await checkCloudConnection()) return
+    const result = await syncPendingRecords().catch(() => null)
+    if (result && result.synced > 0) {
+      localStorage.setItem('tunaeye-last-sync', new Date().toISOString())
+      const child = frame.contentDocument?.querySelector<HTMLIFrameElement>('#kiosk-wrap iframe')?.contentWindow as Kiosk | null
+      if (child && (child as any).__tunaeyeAttached) {
+        try { const { S, R } = api(child); S.hist = history(); R() } catch { }
+      }
+    }
+  }
+  const onVisible = () => { if (document.visibilityState === 'visible') void autoSyncIfReachable() }
+  const onOnline = () => { void autoSyncIfReachable() }
+  window.addEventListener('online', onOnline)
+  document.addEventListener('visibilitychange', onVisible)
+  const syncTimer = setInterval(() => { void autoSyncIfReachable() }, 30_000)
+  window.addEventListener('pagehide', () => { clearInterval(timer); clearInterval(syncTimer); window.removeEventListener('online', onOnline); document.removeEventListener('visibilitychange', onVisible) }, { once: true })
 }
