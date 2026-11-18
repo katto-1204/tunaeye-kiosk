@@ -122,7 +122,7 @@ const runtime = {
       if (saveMessage) toast(saveMessage)
     } catch (error) {
       if (error instanceof PiIntegrationError && error.status === 422) {
-        if (temporaryId) await deleteCapturedEvidence(temporaryId).catch(() => {})
+        if (temporaryId) await deleteCapturedEvidence(temporaryId).catch(() => { })
         toast(error.message, 1)
       } else toast(`${error instanceof Error ? error.message : 'Inference failed.'}${temporaryId ? ' Unvalidated capture remains saved locally; previous accepted evidence is unchanged.' : ''}`, 1)
     }
@@ -136,7 +136,7 @@ const runtime = {
   override(w: Kiosk) {
     const { S, go, toast } = api(w), d = w.document
     const overlay = d.createElement('div'); overlay.className = 'ovl'
-    overlay.innerHTML = '<div class="sheet" role="dialog" aria-modal="true" aria-label="Manual override"><h2>Expert override</h2><label>Station PIN<input class="fi" id="expert-pin" type="password" inputmode="numeric" maxlength="4"></label><div class="g3">'+['A','B','C'].map(g=>`<button class="gopt" data-grade="${g}">${g}</button>`).join('')+'</div><input class="fi" id="expert-reason" placeholder="Reason for override"><div class="mf"><button class="xbn bo" id="expert-cancel">Cancel</button><button class="xpr" id="expert-save">Save override</button></div></div>'
+    overlay.innerHTML = '<div class="sheet" role="dialog" aria-modal="true" aria-label="Manual override"><h2>Expert override</h2><label>Station PIN<input class="fi" id="expert-pin" type="password" inputmode="numeric" maxlength="4"></label><div class="g3">' + ['A', 'B', 'C'].map(g => `<button class="gopt" data-grade="${g}">${g}</button>`).join('') + '</div><input class="fi" id="expert-reason" placeholder="Reason for override"><div class="mf"><button class="xbn bo" id="expert-cancel">Cancel</button><button class="xpr" id="expert-save">Save override</button></div></div>'
     d.getElementById('stage')!.append(overlay); let selected: Grade = 'A'
     overlay.querySelectorAll<HTMLButtonElement>('[data-grade]').forEach(b => b.onclick = () => { selected = b.dataset.grade as Grade; overlay.querySelectorAll('[data-grade]').forEach(x => x.classList.toggle('on', x === b)) })
     overlay.querySelector<HTMLButtonElement>('#expert-cancel')!.onclick = () => overlay.remove()
@@ -155,7 +155,8 @@ const runtime = {
       for (const row of records.filter(record => record.sessionId === anchor.sessionId)) {
         if (!row.result || !['Sashibo core', 'Tail cut'].includes(row.sample) || !['valid', 'uncertain', 'invalid'].includes(row.result.status)) continue
         const sample = row.sample as SampleType
-        results[sample] = { ...row.result, sample, fishId: row.fish, status: row.result.status as 'valid' | 'uncertain' | 'invalid', overrideGrade: row.result.overrideGrade ?? null, overrideReason: row.result.overrideReason ?? '', captured: true, weight: String(parseFloat(row.weight)) }
+        const asGrade = (value: string | null | undefined): Grade | null => value === 'A' || value === 'B' || value === 'C' ? value : null
+        results[sample] = { ...row.result, sample, fishId: row.fish, status: row.result.status as 'valid' | 'uncertain' | 'invalid', originalGrade: asGrade(row.result.originalGrade), overrideGrade: asGrade(row.result.overrideGrade), overrideReason: row.result.overrideReason ?? '', captured: true, weight: String(parseFloat(row.weight)) }
       }
       const decision = decisionFor({ ...initialSession, results }), prices = anchor.transaction
       if (decision.next !== 'print' || decision.grade !== anchor.grade) throw new Error('This saved session does not have a confirmed final grade.')
@@ -178,84 +179,86 @@ const runtime = {
     S.cfg.demo = isDemoMode(); S.cfg.name = localStorage.getItem('tunaeye-station') ?? S.cfg.name
     S.cfg.url = getPiSettings().apiUrl; S.cfg.ep = '/grade'; S.hist = history(); Object.assign(RATE, loadPriceSchedule())
     const original = w.eval('R')
-    ;(w as any).R = () => {
-      S.cfg.demo = isDemoMode()
-      original()
-      const d = w.document, decision = decisionFor(session), sync = d.getElementById('sy')
-      if (S.scr === 'pin') {
-        let busy = false
-        const update = () => { d.querySelectorAll('.pb4 i').forEach((dot, index) => dot.classList.toggle('f', index < S.pin.length)); const button = d.getElementById('go') as HTMLButtonElement; if (button) button.disabled = busy || S.pin.length < 4 }
-        const verify = async () => {
-          if (busy || S.pin.length !== 4) return
-          busy = true; update()
-          const accepted = await runtime.pin(S.pin, w); S.pin = ''; busy = false
-          if (S.scr !== 'pin') return
-          if (accepted) { S.tab = 'overview'; api(w).go('admin'); api(w).toast('Signed in as Admin') }
-          else { update(); if (!d.getElementById('hosted-admin-auth')) api(w).toast(S.pinError || 'Incorrect PIN. Try again.', 1) }
+      ; (w as any).R = () => {
+        S.cfg.demo = isDemoMode()
+        original()
+        const d = w.document, decision = decisionFor(session), sync = d.getElementById('sy')
+        if (S.scr === 'pin') {
+          let busy = false
+          const update = () => { d.querySelectorAll('.pb4 i').forEach((dot, index) => dot.classList.toggle('f', index < S.pin.length)); const button = d.getElementById('go') as HTMLButtonElement; if (button) button.disabled = busy || S.pin.length < 4 }
+          const verify = async () => {
+            if (busy || S.pin.length !== 4) return
+            busy = true; update()
+            const accepted = await runtime.pin(S.pin, w); S.pin = ''; busy = false
+            if (S.scr !== 'pin') return
+            if (accepted) { S.tab = 'overview'; api(w).go('admin'); api(w).toast('Signed in as Admin') }
+            else { update(); if (!d.getElementById('hosted-admin-auth')) api(w).toast(S.pinError || 'Incorrect PIN. Try again.', 1) }
+          }
+          d.querySelectorAll<HTMLButtonElement>('.kp button[data-k]').forEach(button => {
+            button.onclick = () => {
+              if (busy) return
+              S.pin = button.dataset.k === 'd' ? S.pin.slice(0, -1) : S.pin.length < 4 ? S.pin + button.dataset.k : S.pin
+              update()
+              if (S.pin.length === 4) void verify()
+            }
+          })
+          const button = d.getElementById('go'); if (button) button.onclick = () => void verify()
         }
-        d.querySelectorAll<HTMLButtonElement>('.kp button[data-k]').forEach(button => { button.onclick = () => {
-          if (busy) return
-          S.pin = button.dataset.k === 'd' ? S.pin.slice(0, -1) : S.pin.length < 4 ? S.pin + button.dataset.k : S.pin
-          update()
-          if (S.pin.length === 4) void verify()
-        } })
-        const button = d.getElementById('go'); if (button) button.onclick = () => void verify()
-      }
-      if (sync) sync.onclick = () => void runtime.sync(w)
-      if (S.scr === 'final') {
-        const button = d.getElementById('go')!
-        if (decision.next === 'override') { d.querySelector('.v5h h1')!.textContent = 'Expert grade required'; button.textContent = 'Set final grade'; button.onclick = () => runtime.override(w); d.querySelectorAll('.med5-l,.gt5,.gs5').forEach(e => e.textContent = '—') }
-        else button.onclick = () => { if (decision.next === 'print') api(w).go('receipt') }
-        d.querySelectorAll('.lg5').forEach(e => e.textContent = `Model predictions · ${policyDescription}`)
-      }
-      const override = d.getElementById('ov'); if (override) override.onclick = () => runtime.override(w)
-      d.querySelectorAll<HTMLElement>('#dmsw,[data-t="demo"]').forEach(e => { e.onclick = () => runtime.mode(w, !isDemoMode()); e.setAttribute('aria-checked', String(isDemoMode())) })
-      if (S.scr === 'name') {
-        const start = d.getElementById('go') as HTMLButtonElement, proceed = start.onclick
-        start.onclick = async event => {
-          if (start.disabled) return
-          start.disabled = true
-          try { if (isDemoMode() || await showLiveReadiness(w)) proceed?.call(start, event) }
-          finally { if (start.isConnected) start.disabled = !S.name.trim() }
+        if (sync) sync.onclick = () => void runtime.sync(w)
+        if (S.scr === 'final') {
+          const button = d.getElementById('go')!
+          if (decision.next === 'override') { d.querySelector('.v5h h1')!.textContent = 'Expert grade required'; button.textContent = 'Set final grade'; button.onclick = () => runtime.override(w); d.querySelectorAll('.med5-l,.gt5,.gs5').forEach(e => e.textContent = '—') }
+          else button.onclick = () => { if (decision.next === 'print') api(w).go('receipt') }
+          d.querySelectorAll('.lg5').forEach(e => e.textContent = `Model predictions · ${policyDescription}`)
         }
-        if (isDemoMode()) {
-          const choices = d.createElement('select'); choices.setAttribute('aria-label', 'Demo scenario'); choices.className = 'inp'; choices.style.cssText = 'position:absolute;left:14px;bottom:14px;z-index:5;width:auto;max-width:190px;height:26px;padding:0 22px 0 10px;border-radius:999px;font-size:11px;font-weight:700;box-shadow:0 2px 8px rgba(18,59,112,.12)'
-          choices.innerHTML = demoScenarios().map(item => `<option value="${item.id}" title="${item.detail}">${item.label}</option>`).join(''); choices.value = getDemoScenario()
-          choices.onchange = () => setDemoScenario(choices.value as DemoScenario); (start.parentElement!.parentElement ?? start.parentElement!).append(choices)
+        const override = d.getElementById('ov'); if (override) override.onclick = () => runtime.override(w)
+        d.querySelectorAll<HTMLElement>('#dmsw,[data-t="demo"]').forEach(e => { e.onclick = () => runtime.mode(w, !isDemoMode()); e.setAttribute('aria-checked', String(isDemoMode())) })
+        if (S.scr === 'name') {
+          const start = d.getElementById('go') as HTMLButtonElement, proceed = start.onclick
+          start.onclick = async event => {
+            if (start.disabled) return
+            start.disabled = true
+            try { if (isDemoMode() || await showLiveReadiness(w)) proceed?.call(start, event) }
+            finally { if (start.isConnected) start.disabled = !S.name.trim() }
+          }
+          if (isDemoMode()) {
+            const choices = d.createElement('select'); choices.setAttribute('aria-label', 'Demo scenario'); choices.className = 'inp'; choices.style.cssText = 'position:absolute;left:14px;bottom:14px;z-index:5;width:auto;max-width:190px;height:26px;padding:0 22px 0 10px;border-radius:999px;font-size:11px;font-weight:700;box-shadow:0 2px 8px rgba(18,59,112,.12)'
+            choices.innerHTML = demoScenarios().map(item => `<option value="${item.id}" title="${item.detail}">${item.label}</option>`).join(''); choices.value = getDemoScenario()
+            choices.onchange = () => setDemoScenario(choices.value as DemoScenario); (start.parentElement!.parentElement ?? start.parentElement!).append(choices)
+          }
+        }
+        if (isDemoMode() && S.scr === 'final') d.querySelectorAll('.lg5').forEach(e => e.textContent = 'Simulated prediction · Demo only · Not saved as an operational grade')
+        const install = d.getElementById('ia'); if (install) install.onclick = async () => api(w).toast(await requestPwaInstall())
+        if (S.scr === 'receipt') { const skip = d.getElementById('sk'); if (skip) skip.onclick = () => api(w).modal({ title: 'Skip printing?', body: 'The record remains saved locally.', ok: 'Skip receipt', onOk: () => runtime.finish(w) }) }
+        if (S.scr === 'admin' && S.tab === 'devices') {
+          d.querySelectorAll('.bd.ok').forEach(e => e.textContent = 'Not verified')
+          const b = d.createElement('button'); b.className = 'xpr'; b.textContent = 'Check Raspberry Pi'; b.onclick = async () => { try { await checkPiHealth(); api(w).toast('Pi status endpoint reachable') } catch (e) { api(w).toast(e instanceof Error ? e.message : 'Pi unavailable', 1) } }; d.querySelector('.ab2')?.append(b)
+        }
+        const save = d.getElementById('sv')
+        if (save) save.onclick = async () => {
+          if (S.tab === 'prices') {
+            const prices = { ...loadPriceSchedule() }; for (const input of d.querySelectorAll<HTMLInputElement>('.pi')) { const value = Number(input.value); if (!Number.isFinite(value) || value < 0) { api(w).toast('Enter non-negative prices.', 1); return }; prices[input.dataset.g as Grade] = value }
+            localStorage.setItem('tunaeye-prices', JSON.stringify(prices)); Object.assign(RATE, prices)
+            try { await syncPriceSchedule(prices); api(w).toast('Price schedule saved and verified') } catch { api(w).toast('Prices saved locally. Cloud sync unavailable.', 1) }
+          } else { localStorage.setItem('tunaeye-station', S.cfg.name); localStorage.setItem('tunaeye-rpi-url', S.cfg.url); localStorage.setItem('tunaeye-model-name', S.cfg.model); api(w).toast('Station settings saved') }
+        }
+        if (S.scr === 'admin') {
+          enhanceAdmin(w, { refresh: () => api(w).R(), notice: (text, error) => api(w).toast(text, error ? 1 : 0), setDemo: value => runtime.mode(w, value) })
+          if (S.tab === 'settings') { const host = d.querySelector<HTMLElement>('.ea'); if (host) mountPinSettings(w, host) }
+          d.querySelectorAll('.as > div').forEach(el => { if (el.textContent?.includes('System online')) el.textContent = navigator.onLine ? 'Network available · Pi not checked' : 'Network offline · records retained' })
         }
       }
-      if (isDemoMode() && S.scr === 'final') d.querySelectorAll('.lg5').forEach(e => e.textContent = 'Simulated prediction · Demo only · Not saved as an operational grade')
-      const install = d.getElementById('ia'); if (install) install.onclick = async () => api(w).toast(await requestPwaInstall())
-      if (S.scr === 'receipt') { const skip = d.getElementById('sk'); if (skip) skip.onclick = () => api(w).modal({ title: 'Skip printing?', body: 'The record remains saved locally.', ok: 'Skip receipt', onOk: () => runtime.finish(w) }) }
-      if (S.scr === 'admin' && S.tab === 'devices') {
-        d.querySelectorAll('.bd.ok').forEach(e => e.textContent = 'Not verified')
-        const b = d.createElement('button'); b.className = 'xpr'; b.textContent = 'Check Raspberry Pi'; b.onclick = async () => { try { await checkPiHealth(); api(w).toast('Pi status endpoint reachable') } catch (e) { api(w).toast(e instanceof Error ? e.message : 'Pi unavailable', 1) } }; d.querySelector('.ab2')?.append(b)
-      }
-      const save = d.getElementById('sv')
-      if (save) save.onclick = async () => {
-        if (S.tab === 'prices') {
-          const prices = { ...loadPriceSchedule() }; for (const input of d.querySelectorAll<HTMLInputElement>('.pi')) { const value = Number(input.value); if (!Number.isFinite(value) || value < 0) { api(w).toast('Enter non-negative prices.', 1); return }; prices[input.dataset.g as Grade] = value }
-          localStorage.setItem('tunaeye-prices', JSON.stringify(prices)); Object.assign(RATE, prices)
-          try { await syncPriceSchedule(prices); api(w).toast('Price schedule saved and verified') } catch { api(w).toast('Prices saved locally. Cloud sync unavailable.', 1) }
-        } else { localStorage.setItem('tunaeye-station', S.cfg.name); localStorage.setItem('tunaeye-rpi-url', S.cfg.url); localStorage.setItem('tunaeye-model-name', S.cfg.model); api(w).toast('Station settings saved') }
-      }
-      if (S.scr === 'admin') {
-        enhanceAdmin(w, { refresh: () => api(w).R(), notice: (text, error) => api(w).toast(text, error ? 1 : 0), setDemo: value => runtime.mode(w, value) })
-        if (S.tab === 'settings') { const host = d.querySelector<HTMLElement>('.ea'); if (host) mountPinSettings(w, host) }
-        d.querySelectorAll('.as > div').forEach(el => { if (el.textContent?.includes('System online')) el.textContent = navigator.onLine ? 'Network available · Pi not checked' : 'Network offline · records retained' })
-      }
-    }
     const done = SC.done; SC.done = () => { const screen = done(); screen.after = () => { const e = w.document.querySelector('.cdw'); if (e) { e.innerHTML = '<button class="pill">Grade another</button>'; e.querySelector('button')!.onclick = () => w.eval('fresh()') } }; return screen }
     api(w).R()
     if (tabletEntry) w.document.addEventListener('pointerdown', () => {
-      if (!document.fullscreenElement) void document.documentElement.requestFullscreen?.().catch(() => {})
+      if (!document.fullscreenElement) void document.documentElement.requestFullscreen?.().catch(() => { })
     }, { once: true, capture: true })
   },
 }
 
 export function launchExactUI(showBootDial = true) {
   registerPwa()
-  ;(window as any).TunaEyeRuntime = runtime
+    ; (window as any).TunaEyeRuntime = runtime
   let html = source
   html = html.replace(/https:\/\/fonts\.googleapis\.com\/css2\?[^"'\s<>\\)]+/g, '/fonts/exact-ui.css')
   if (experimentalPolicy) html = html.replaceAll('under 80%', 'outside acceptance policy').replaceAll('below 80%', 'outside acceptance policy').replaceAll('≥ 80%', 'accepted by policy').replaceAll('80% or above', 'accepted by policy')
@@ -288,7 +291,7 @@ export function launchExactUI(showBootDial = true) {
     if (tablet) {
       tabletEntry = true
       landing.eval('window.openKiosk()')
-      const fullscreen = () => { void document.documentElement.requestFullscreen?.().catch(() => {}); document.removeEventListener('pointerdown', fullscreen, true) }
+      const fullscreen = () => { void document.documentElement.requestFullscreen?.().catch(() => { }); document.removeEventListener('pointerdown', fullscreen, true) }
       void document.documentElement.requestFullscreen?.().catch(() => document.addEventListener('pointerdown', fullscreen, true))
     }
   }
