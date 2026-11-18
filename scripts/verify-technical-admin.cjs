@@ -6,7 +6,7 @@ const fs = require('fs')
     for (const viewport of [{ width: 1280, height: 800 }, { width: 1024, height: 600 }]) {
       const c = await b.newContext({ viewport }), p = await c.newPage(), errors = []
       p.on('pageerror', e => errors.push(e.message))
-      await p.addInitScript(() => localStorage.setItem('tunaeye-records', JSON.stringify([{ id: 'qa-unsynced', sessionId: 'qa', timestamp: 1, time: 'QA', grader: 'Diagnostic fixture', sample: 'Sashibo core', fish: 'Fish 1', weight: '85 kg', grade: 'B', status: 'Complete', capturedImageId: 'qa-missing-image', transaction: { currency: 'PHP', amount: 29750, syncState: 'failed', lastSyncError: 'Cloud verification failed for capture_id' } }])))
+      await p.addInitScript(() => localStorage.setItem('tunaeye-records', JSON.stringify([{ id: 'qa-unsynced', sessionId: 'qa', timestamp: Date.now(), time: 'QA', grader: 'Diagnostic fixture', sample: 'Sashibo core', fish: 'Fish 1', weight: '85 kg', grade: 'B', status: 'Complete', capturedImageId: 'qa-missing-image', transaction: { currency: 'PHP', amount: 29750, syncState: 'failed', lastSyncError: 'Cloud verification failed for capture_id' } }])))
       let reads = 0, writes = 0, failPi = false
       p.on('request', r => { if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(r.method())) writes++ })
       await p.route('**/status', r => { reads++; return r.fulfill({ status: failPi ? 503 : 200, contentType: 'application/json', body: JSON.stringify({ service: 'QA Pi service', version: '2.4-test', model: 'grade-model-test', models: { sashibocore: true, tailcut: false }, classes: ['GRADE_A', 'GRADE_B', 'GRADE_C', 'INVALID'] }) }) })
@@ -17,6 +17,9 @@ const fs = require('fs')
       const k = p.frames().find(f => f.parentFrame() === l)
       await expect.poll(() => k.evaluate(() => Boolean(window.__tunaeyeAttached))).toBe(true)
       await k.evaluate(() => { S.tab = 'overview'; go('admin') })
+      await expect(k.locator('.ea-metric').first()).toContainText('1')
+      await expect(k.locator('.ea-chart')).toHaveAttribute('aria-label', /1$/)
+      await expect(k.locator('.ea-grade-legend')).toContainText('Grade B1')
       await expect(k.locator('[data-diagnostic-status="pi"]')).toContainText('Not checked')
       if (reads || writes) throw Error('Admin mounted with automatic hardware/cloud writes or probes')
       await expect(k.locator('#station-mode')).toHaveCount(0)

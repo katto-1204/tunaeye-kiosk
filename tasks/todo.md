@@ -1,5 +1,15 @@
 # Plan
 
+## Restore light dashboard admin (2026-11-18)
+
+- [x] Restore white navigation, sans-serif typography and blue feature cards from the preferred dashboard references.
+- [x] Put real station metrics/charts and recent records first; retain diagnostics and every admin handler.
+- [x] Verify desktop/tablet navigation, CRUD/settings, diagnostics and logout; refresh Pi ZIP and commit locally.
+
+Scope: admin presentation only. No grading, camera, offline storage or cloud-sync policy changes.
+
+Review: replaced the gradient sidebar/serif styling with white navigation, sans-serif headers, a blue summary card and compact weekly-volume/grade-distribution cards. Overview now starts with saved-record metrics and recent records; diagnostics remain below and on Devices. Charts use actual stored records with an accessible weekly summary and a neutral empty ring. Playwright technical-admin checks passed at 1280x800 and 1024x600, including counts, Pi success/failure, evidence and no remote writes. Existing admin CRUD/settings/PIN/pagination/tablet-entry and logout checks pass. Screenshots reviewed; TypeScript/Pi build and ZIP integrity pass. Hardware and live cloud remain untested.
+
 ## Logout confirmation button fix (2026-11-18)
 
 - [x] Reproduce the clipped green logout label and trace the conflicting style.

@@ -1,5 +1,7 @@
 # Lessons
 
+- Preserve the user's preferred dashboard visual language when adding technical admin controls. Use white navigation, sans-serif headings and compact blue summary cards when these references are supplied; keep detailed diagnostics below the operational overview.
+
 - Admin redesign requests require operational data and working technical controls, not only typography/cards. If the user removes a floating status chip, delete its render code and keep the requested mode control in a deliberate settings location.
 
 - When the user supplies a complete HTML interface and asks for its exact look, use that interface as the rendering source. Do not substitute a React approximation or retain the legacy UI under new styling; adapt only technical wiring and verify against the supplied file.

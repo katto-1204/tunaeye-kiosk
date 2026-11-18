@@ -2,6 +2,8 @@
 
 ## Updated follow-up release
 
+Admin presentation now follows the preferred light dashboard references: white navigation, sans-serif headings, blue summary cards, weekly volume and grade distribution calculated from saved records. Metrics and recent records appear before the retained technical diagnostics. Grading, offline storage and manual sync behavior are unchanged.
+
 The latest update removes the floating bottom-right demo/live chip entirely. Switch modes in grader entry or **Admin → Settings → Grading operating mode**. Overview and Devices now include operational diagnostics: Pi/model/service metadata and request latency, decoded camera snapshots, effective endpoint configuration, cloud gateway reachability, queue/error details, browser quota and evidence/cache checks. All probes require an explicit click, never perform record uploads, and distinguish untested/unavailable services from successful checks. Tests cover success and failure using isolated API fixtures; actual station hardware and cloud writes are not claimed verified.
 
 Use `tunaeye-pi-build-2026-11-18-updated.zip` for the latest build. It restores the actual KiloThermalDial on startup and landing-to-kiosk transition, adds an explicit persisted demo/live switch, tablet kiosk auto-entry, and a landing-style admin with records/evidence/search/pagination/CSV, grader management, price/settings persistence, device diagnostics, audit and cloud sign-in controls. Tablets attempt fullscreen automatically and retry on the first kiosk tap if the browser requires a gesture.
