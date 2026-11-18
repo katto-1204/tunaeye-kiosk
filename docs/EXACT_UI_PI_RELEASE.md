@@ -2,6 +2,8 @@
 
 ## Updated follow-up release
 
+The receipt page automatically starts the existing system print flow after one second. A manual print before the timeout does not duplicate the job; leaving the page invalidates its timer. Failed printing leaves saved records intact and retains retry/skip controls. Bluetooth printers must be configured through the operating system print service; this change does not add direct Bluetooth transport or claim physical paper delivery. Browser/system configuration determines whether the print dialog appears.
+
 Admin presentation now follows the preferred light dashboard references: white navigation, sans-serif headings, blue summary cards, weekly volume and grade distribution calculated from saved records. Metrics and recent records appear before the retained technical diagnostics. Grading, offline storage and manual sync behavior are unchanged.
 
 The latest update removes the floating bottom-right demo/live chip entirely. Switch modes in grader entry or **Admin → Settings → Grading operating mode**. Overview and Devices now include operational diagnostics: Pi/model/service metadata and request latency, decoded camera snapshots, effective endpoint configuration, cloud gateway reachability, queue/error details, browser quota and evidence/cache checks. All probes require an explicit click, never perform record uploads, and distinguish untested/unavailable services from successful checks. Tests cover success and failure using isolated API fixtures; actual station hardware and cloud writes are not claimed verified.

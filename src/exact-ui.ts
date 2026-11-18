@@ -189,7 +189,7 @@ export function launchExactUI() {
   html = html.replace(/function fin\(\)[^\n]*/, 'function fin(){window.top.TunaEyeRuntime.finish(window)}')
   html = html.replace('pin:p=>p===\'1234\'', 'pin:p=>window.top.TunaEyeRuntime.pin(p,window)').replace('print:async()=>true', 'print:async()=>window.top.TunaEyeRuntime.print(window)')
   html = html.replace('S.hist=ok?L:seedHist()', 'S.hist=[]').replace("S.cfg.demo=localStorage.getItem('te-demo')!=='0'", 'S.cfg.demo=false')
-  html = html.replace("setTimeout(()=>{if(S.scr==='receipt')printIt(fin)},650)", '')
+  html = html.replace("setTimeout(()=>{if(S.scr==='receipt')printIt(fin)},650)", "const receiptPrintButton=$('#orb');setTimeout(()=>{if(S.scr==='receipt'&&$('#orb')===receiptPrintButton)printIt(fin)},1000)")
   document.documentElement.style.cssText = 'height:100%;background:#f4f6fa'
   document.body.style.cssText = 'margin:0;height:100dvh;overflow:hidden'
   const frame = document.createElement('iframe'); frame.title = 'TunaEye'; frame.style.cssText = 'border:0;width:100%;height:100%;display:block'; frame.allow = 'fullscreen; camera; autoplay'; frame.srcdoc = html

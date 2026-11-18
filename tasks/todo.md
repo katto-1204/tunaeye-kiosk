@@ -1,5 +1,15 @@
 # Plan
 
+## Automatic receipt printing (2026-11-18)
+
+- [x] Restore a one-second automatic print on receipt entry, using the existing printer flow.
+- [x] Verify delay, navigation cancellation, manual-print deduplication and retry/error behavior with Playwright.
+- [x] Build the Pi package, refresh ZIP and commit locally.
+
+Scope: receipt timing only. Preserve grade validation, receipt contents, stored evidence and manual print/skip controls. Existing output uses the OS print dialog; no direct Bluetooth transport is configured.
+
+Review: the exact-HTML adapter now restores automatic printing at 1000ms and checks the originating print button so stale timers cannot print after leaving/reentering. Existing busy lock prevents manual/automatic duplicates. Extended the real core-capture-to-receipt Playwright flow: Grade C at 91% preserved; no print before 500ms; automatic print after at least 950ms; printer error permits retry and retains the saved record; leaving cancels printing; manual print before timeout prints once. Print calls are mocked, not physical paper verification. No page errors or failed requests (external fonts stubbed). TypeScript/Pi build passed. ZIP refreshed and integrity checked. OS printer configuration still determines Bluetooth routing and whether a print dialog appears.
+
 ## Restore light dashboard admin (2026-11-18)
 
 - [x] Restore white navigation, sans-serif typography and blue feature cards from the preferred dashboard references.
