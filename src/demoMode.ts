@@ -12,7 +12,7 @@ export function demoCanStart() {
   return demoAvailable || import.meta.env.DEV
 }
 
-export type DemoScenario = 'confident' | 'needs-tail' | 'needs-expert'
+export type DemoScenario = 'confident' | 'needs-tail' | 'needs-expert' | 'grade-b' | 'grade-c' | 'invalid-core' | 'invalid-tail'
 
 const scenarioTable: Record<DemoScenario, Record<SampleType, { grade: Grade; confidence: number }>> = {
   confident: {
@@ -27,6 +27,10 @@ const scenarioTable: Record<DemoScenario, Record<SampleType, { grade: Grade; con
     'Sashibo core': { grade: 'B', confidence: 68.1 },
     'Tail cut': { grade: 'C', confidence: 66.4 },
   },
+  'grade-b': { 'Sashibo core': { grade: 'B', confidence: 94 }, 'Tail cut': { grade: 'B', confidence: 94 } },
+  'grade-c': { 'Sashibo core': { grade: 'C', confidence: 94 }, 'Tail cut': { grade: 'C', confidence: 94 } },
+  'invalid-core': { 'Sashibo core': { grade: 'A', confidence: 97 }, 'Tail cut': { grade: 'A', confidence: 94 } },
+  'invalid-tail': { 'Sashibo core': { grade: 'C', confidence: 74.2 }, 'Tail cut': { grade: 'A', confidence: 97 } },
 }
 
 let scenario: DemoScenario = 'confident'
@@ -36,6 +40,10 @@ export function demoScenarios() {
     { id: 'confident' as const, label: 'Sashibo accepts', detail: '96% — print immediately' },
     { id: 'needs-tail' as const, label: 'Tail cut needed', detail: '74% then 91% — blended grade' },
     { id: 'needs-expert' as const, label: 'Expert needed', detail: 'Both under 80%' },
+    { id: 'grade-b' as const, label: 'Grade B', detail: 'Confident Grade B' },
+    { id: 'grade-c' as const, label: 'Grade C', detail: 'Confident Grade C' },
+    { id: 'invalid-core' as const, label: 'Invalid core', detail: 'Retake required' },
+    { id: 'invalid-tail' as const, label: 'Invalid tail cut', detail: 'Supplementary image rejected' },
   ]
 }
 
@@ -120,8 +128,7 @@ function demoScores(grade: Grade): Record<string, number> {
 }
 
 export async function loadDemoSampleBlob(sample: SampleType, sampleIndex: number): Promise<Blob> {
-  const grade = defaultDemoGrade(sampleIndex)
-  setDemoGradeHint(sample, grade)
+  const grade = gradeHints.get(sample) ?? scenarioTable[scenario][sample].grade
   const response = await fetch(demoAssetPath(sample, grade))
   if (!response.ok) throw new Error(`Demo sample missing: ${demoAssetPath(sample, grade)}`)
   return response.blob()
@@ -134,6 +141,9 @@ export function getDemoPreviewUrl(sample: SampleType, sampleIndex: number) {
 export async function gradeDemoImage(sample: SampleType): Promise<PiGradeResult> {
   await new Promise(resolve => window.setTimeout(resolve, 700))
   const preset = scenarioTable[scenario][sample]
+  if ((scenario === 'invalid-core' && sample === 'Sashibo core') || (scenario === 'invalid-tail' && sample === 'Tail cut')) return {
+    id: `demo-${createId()}`, captureId: `demo-capture-${createId()}`, imageType: sample === 'Tail cut' ? 'tailcut' : 'sashibocore', modelSource: 'demo', outcome: 'invalid', grade: null, confidence: 97, rawConfidence: .97, scores: { GRADE_A: .01, GRADE_B: .01, GRADE_C: .01, INVALID: .97 },
+  }
   const hinted = gradeHints.get(sample)
   const grade = hinted ?? preset.grade
   const confidence = hinted ? (grade === 'A' ? 96.3 : grade === 'B' ? 91.2 : 74.2) : preset.confidence

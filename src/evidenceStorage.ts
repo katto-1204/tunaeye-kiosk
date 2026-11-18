@@ -1,3 +1,4 @@
+import { readSqliteEvidence } from './sqliteStore'
 const DATABASE_NAME = 'tunaeye-offline'
 const STORE_NAME = 'evidence'
 
@@ -47,7 +48,9 @@ export async function saveCapturedEvidence(record: Omit<EvidenceRecord, 'mimeTyp
 export async function getCapturedEvidence(id: string): Promise<EvidenceRecord | undefined> {
   const database = await openDatabase()
   try {
-    return await requestResult(database.transaction(STORE_NAME).objectStore(STORE_NAME).get(id))
+    const local = await requestResult<EvidenceRecord | undefined>(database.transaction(STORE_NAME).objectStore(STORE_NAME).get(id))
+    if (local) return local
+    try { return await readSqliteEvidence(id) as EvidenceRecord | undefined } catch { return undefined }
   } finally {
     database.close()
   }

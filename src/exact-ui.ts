@@ -10,8 +10,12 @@ import { syncPendingRecords, syncPriceSchedule } from './cloudSync'
 import { hasAdminProfile, isSupabaseConfigured, sendAdminMagicLink } from './supabase'
 import { createId } from './id'
 import { showLoadingDial } from './exact-loading'
-import { isDemoMode, setKioskDemoMode } from './demoMode'
+import { isDemoMode, setKioskDemoMode, demoScenarios, getDemoScenario, setDemoScenario, type DemoScenario } from './demoMode'
 import { enhanceAdmin } from './exact-admin'
+import { showLiveReadiness } from './liveReadiness'
+import { verifyAdminPin, mountPinSettings } from './adminPin'
+import { registerPwa, requestPwaInstall } from './pwa'
+import { printThermalReceipt } from './thermalReceipt'
 
 type Kiosk = Window & { eval: (text: string) => any }
 let session: Session = { ...initialSession }
@@ -43,17 +47,19 @@ function initialize(w: Kiosk) {
   }
 }
 const runtime = {
-  mode(w: Kiosk, demo: boolean) {
+  async mode(w: Kiosk, demo: boolean) {
     const { S } = api(w)
     if (capturing || (S.core != null && ['core', 'tail', 'tailneed', 'final', 'receipt'].includes(S.scr))) { api(w).toast('Finish this grading session before switching modes.', 1); return }
+    if (!demo && !await showLiveReadiness(w)) return
     if (S.core != null) { S.core = S.tail = null; S.img = {}; S.captureTime = undefined; session = { ...initialSession, results: {} }; order = null }
     setKioskDemoMode(demo); localStorage.setItem('tunaeye-explicit-demo', String(demo)); api(w).S.cfg.demo = demo; api(w).R()
   },
   grade: () => decisionFor(session).grade ?? 'C',
   sampleGrade: (confidence: number) => Object.values(session.results).find(r => r?.originalConfidence === confidence)?.originalGrade ?? '—',
   async pin(pin: string, w?: Kiosk) {
-    if (pin !== '1234') return false
-    if (!isSupabaseConfigured() || ['localhost', '127.0.0.1'].includes(location.hostname)) return true
+    if (w) api(w).S.pinError = ''
+    try { if (!await verifyAdminPin(pin)) return false } catch (error) { if (w) api(w).S.pinError = error instanceof Error ? error.message : 'PIN unavailable'; return false }
+    if (getPiSettings().mode !== 'hosted-gateway' || !isSupabaseConfigured()) return true
     if (await hasAdminProfile()) return true
     if (w) runtime.signIn(w)
     return false
@@ -108,10 +114,12 @@ const runtime = {
       session = reducer(session, { type: 'finishAnalysis', outcome: result.outcome, grade: result.grade, confidence: result.confidence, rawConfidence: result.rawConfidence, inferenceId: result.id, captureId: result.captureId, scores: result.scores, imageType: result.imageType, modelSource: result.modelSource })
       S.img = { ...(S.img ?? {}), [key]: previews[key] }; S[key] = result.confidence
       if (key === 'core') S.tail = null
-      if (!isDemoMode()) { persist(w); toast(await sqliteSaveStatus()) }
+      let saveMessage: string | undefined
+      if (!isDemoMode()) { persist(w); saveMessage = await sqliteSaveStatus() }
       const decision = decisionFor(session)
       if (decision.next === 'retake') { toast(decision.detail, 1); return }
       go(decision.next === 'tail' ? 'tailneed' : 'final')
+      if (saveMessage) toast(saveMessage)
     } catch (error) {
       if (error instanceof PiIntegrationError && error.status === 422) {
         if (temporaryId) await deleteCapturedEvidence(temporaryId).catch(() => {})
@@ -138,14 +146,30 @@ const runtime = {
       session = reducer(session, { type: 'setOverride', sample, grade: selected, reason: (overlay.querySelector('#expert-reason') as HTMLInputElement).value, actor: S.name, timestamp: new Date().toISOString() }); if (!isDemoMode()) persist(w); overlay.remove(); go('receipt')
     }
   },
-  print(w: Kiosk) {
-    if (decisionFor(session).next !== 'print') throw new Error('An expert must confirm the final grade.')
-    if (!w.document.getElementById('thermal-print-rules')) {
-      const style = w.document.createElement('style'); style.id = 'thermal-print-rules'
-      style.textContent = '@media print{@page{size:58mm auto;margin:0}html,body{position:static!important;width:58mm!important;height:auto!important;overflow:visible!important;padding:0!important}body *{visibility:hidden!important}#stage{zoom:1!important;transform:none!important;border:0!important;overflow:visible!important}.rcl,.rcl *{visibility:visible!important}.rcl{position:absolute!important;left:0!important;top:0!important;width:58mm!important;transform:none!important}.rcl .pr{width:58mm!important}.rcl .ph{display:none!important}.rcl .pb{animation:none!important;transform:none!important;filter:none!important}}'
-      w.document.head.append(style)
+  async print(w: Kiosk) {
+    const { S } = api(w)
+    if (S.scr === 'detail') {
+      const records = loadRecords(), anchor = records.find(record => record.id === S.detail?.id)
+      if (!anchor) throw new Error('The saved grading record is unavailable. Reopen it from Records.')
+      const results: Session['results'] = {}
+      for (const row of records.filter(record => record.sessionId === anchor.sessionId)) {
+        if (!row.result || !['Sashibo core', 'Tail cut'].includes(row.sample) || !['valid', 'uncertain', 'invalid'].includes(row.result.status)) continue
+        const sample = row.sample as SampleType
+        results[sample] = { ...row.result, sample, fishId: row.fish, status: row.result.status as 'valid' | 'uncertain' | 'invalid', overrideGrade: row.result.overrideGrade ?? null, overrideReason: row.result.overrideReason ?? '', captured: true, weight: String(parseFloat(row.weight)) }
+      }
+      const decision = decisionFor({ ...initialSession, results }), prices = anchor.transaction
+      if (decision.next !== 'print' || decision.grade !== anchor.grade) throw new Error('This saved session does not have a confirmed final grade.')
+      if (!prices || typeof prices.unitRatePerKg !== 'number' || !Number.isFinite(prices.unitRatePerKg) || prices.unitRatePerKg < 0 || typeof prices.amount !== 'number' || !Number.isFinite(prices.amount) || prices.amount < 0) throw new Error('The original receipt price snapshot is unavailable. Current rates will not be substituted.')
+      const receiptOrder = Number(S.detail.o)
+      if (!Number.isSafeInteger(receiptOrder) || receiptOrder < 1) throw new Error('The saved receipt order is unavailable.')
+      const sample = (key: SampleType) => { const result = results[key]; return result ? { grade: result.originalGrade ?? 'Invalid', confidence: result.originalConfidence } : undefined }
+      return printThermalReceipt(w, { station: S.cfg.name, order: `TE_${String(receiptOrder).padStart(4, '0')}`, grader: anchor.grader, timestamp: anchor.timestamp, weight: parseFloat(anchor.weight), grade: decision.grade!, unitRatePerKg: prices.unitRatePerKg, total: prices.amount, core: sample('Sashibo core'), tail: sample('Tail cut'), demo: false })
     }
-    w.print(); return true
+    if (decisionFor(session).next !== 'print') throw new Error('An expert must confirm the final grade.')
+    const grade = decisionFor(session).grade!, saved = loadRecords().find(record => record.sessionId === sessionId)
+    const prices = saved?.transaction ?? priceSnapshot(grade, S.w)
+    const sample = (key: SampleType) => { const result = session.results[key]; return result ? { grade: result.originalGrade ?? 'Invalid', confidence: result.originalConfidence } : undefined }
+    return printThermalReceipt(w, { station: S.cfg.name, order: `TE_${String(S.order).padStart(4, '0')}`, grader: S.name, timestamp: S.captureTime ?? Date.now(), weight: S.w, grade, unitRatePerKg: prices.unitRatePerKg ?? null, total: prices.amount, core: sample('Sashibo core'), tail: sample('Tail cut'), demo: isDemoMode() })
   },
   finish(w: Kiosk) { const { S, go } = api(w); S.hist = history(); go('done') },
   attach(w: Kiosk) {
@@ -158,6 +182,25 @@ const runtime = {
       S.cfg.demo = isDemoMode()
       original()
       const d = w.document, decision = decisionFor(session), sync = d.getElementById('sy')
+      if (S.scr === 'pin') {
+        let busy = false
+        const update = () => { d.querySelectorAll('.pb4 i').forEach((dot, index) => dot.classList.toggle('f', index < S.pin.length)); const button = d.getElementById('go') as HTMLButtonElement; if (button) button.disabled = busy || S.pin.length < 4 }
+        const verify = async () => {
+          if (busy || S.pin.length !== 4) return
+          busy = true; update()
+          const accepted = await runtime.pin(S.pin, w); S.pin = ''; busy = false
+          if (S.scr !== 'pin') return
+          if (accepted) { S.tab = 'overview'; api(w).go('admin'); api(w).toast('Signed in as Admin') }
+          else { update(); if (!d.getElementById('hosted-admin-auth')) api(w).toast(S.pinError || 'Incorrect PIN. Try again.', 1) }
+        }
+        d.querySelectorAll<HTMLButtonElement>('.kp button[data-k]').forEach(button => { button.onclick = () => {
+          if (busy) return
+          S.pin = button.dataset.k === 'd' ? S.pin.slice(0, -1) : S.pin.length < 4 ? S.pin + button.dataset.k : S.pin
+          update()
+          if (S.pin.length === 4) void verify()
+        } })
+        const button = d.getElementById('go'); if (button) button.onclick = () => void verify()
+      }
       if (sync) sync.onclick = () => void runtime.sync(w)
       if (S.scr === 'final') {
         const button = d.getElementById('go')!
@@ -167,6 +210,22 @@ const runtime = {
       }
       const override = d.getElementById('ov'); if (override) override.onclick = () => runtime.override(w)
       d.querySelectorAll<HTMLElement>('#dmsw,[data-t="demo"]').forEach(e => { e.onclick = () => runtime.mode(w, !isDemoMode()); e.setAttribute('aria-checked', String(isDemoMode())) })
+      if (S.scr === 'name') {
+        const start = d.getElementById('go') as HTMLButtonElement, proceed = start.onclick
+        start.onclick = async event => {
+          if (start.disabled) return
+          start.disabled = true
+          try { if (isDemoMode() || await showLiveReadiness(w)) proceed?.call(start, event) }
+          finally { if (start.isConnected) start.disabled = !S.name.trim() }
+        }
+        if (isDemoMode()) {
+          const choices = d.createElement('select'); choices.setAttribute('aria-label', 'Demo scenario'); choices.className = 'inp'; choices.style.cssText = 'position:absolute;left:34px;right:34px;bottom:160px;width:calc(100% - 68px);height:42px;font-size:14px'
+          choices.innerHTML = demoScenarios().map(item => `<option value="${item.id}">${item.label} · ${item.detail}</option>`).join(''); choices.value = getDemoScenario()
+          choices.onchange = () => setDemoScenario(choices.value as DemoScenario); start.parentElement!.append(choices)
+        }
+      }
+      if (isDemoMode() && S.scr === 'final') d.querySelectorAll('.lg5').forEach(e => e.textContent = 'Simulated prediction · Demo only · Not saved as an operational grade')
+      const install = d.getElementById('ia'); if (install) install.onclick = async () => api(w).toast(await requestPwaInstall())
       if (S.scr === 'receipt') { const skip = d.getElementById('sk'); if (skip) skip.onclick = () => api(w).modal({ title: 'Skip printing?', body: 'The record remains saved locally.', ok: 'Skip receipt', onOk: () => runtime.finish(w) }) }
       if (S.scr === 'admin' && S.tab === 'devices') {
         d.querySelectorAll('.bd.ok').forEach(e => e.textContent = 'Not verified')
@@ -182,6 +241,7 @@ const runtime = {
       }
       if (S.scr === 'admin') {
         enhanceAdmin(w, { refresh: () => api(w).R(), notice: (text, error) => api(w).toast(text, error ? 1 : 0), setDemo: value => runtime.mode(w, value) })
+        if (S.tab === 'settings') { const host = d.querySelector<HTMLElement>('.ea'); if (host) mountPinSettings(w, host) }
         d.querySelectorAll('.as > div').forEach(el => { if (el.textContent?.includes('System online')) el.textContent = navigator.onLine ? 'Network available · Pi not checked' : 'Network offline · records retained' })
       }
     }
@@ -193,9 +253,11 @@ const runtime = {
   },
 }
 
-export function launchExactUI() {
+export function launchExactUI(showBootDial = true) {
+  registerPwa()
   ;(window as any).TunaEyeRuntime = runtime
   let html = source
+  html = html.replace(/https:\/\/fonts\.googleapis\.com\/css2\?[^"'\s<>\\)]+/g, '/fonts/exact-ui.css')
   if (experimentalPolicy) html = html.replaceAll('under 80%', 'outside acceptance policy').replaceAll('below 80%', 'outside acceptance policy').replaceAll('≥ 80%', 'accepted by policy').replaceAll('80% or above', 'accepted by policy')
   html = html.replace(/gradeOf=\(\)=>lt\(S\.tail==null\?S\.core:\(S\.core\+S\.tail\)\/2\)/, 'gradeOf=()=>window.top.TunaEyeRuntime.grade()')
   html = html.replace("lt=v=>v>=90?'A':v>=80?'B':'C'", 'lt=v=>window.top.TunaEyeRuntime.sampleGrade(v)')
@@ -207,17 +269,19 @@ export function launchExactUI() {
   html = html.replace('pin:p=>p===\'1234\'', 'pin:p=>window.top.TunaEyeRuntime.pin(p,window)').replace('print:async()=>true', 'print:async()=>window.top.TunaEyeRuntime.print(window)')
   html = html.replace('S.hist=ok?L:seedHist()', 'S.hist=[]').replace("S.cfg.demo=localStorage.getItem('te-demo')!=='0'", 'S.cfg.demo=false')
   html = html.replace("setTimeout(()=>{if(S.scr==='receipt')printIt(fin)},650)", "const receiptPrintButton=$('#orb');setTimeout(()=>{if(S.scr==='receipt'&&$('#orb')===receiptPrintButton)printIt(fin)},1000)")
+  html = html.replaceAll('</head>', '<style>@media(pointer:coarse){.scr>*,.v5row>*,.ltvf,.ltside,.v5h,.med5-l,.dhero,.dsc,.dsr,.drow,.rcr,tr.r,.st,.vs,.sp5{animation-name:none!important}}</style></head>')
   document.documentElement.style.cssText = 'height:100%;background:#f4f6fa'
   document.body.style.cssText = 'margin:0;height:100dvh;overflow:hidden'
   const frame = document.createElement('iframe'); frame.title = 'TunaEye'; frame.style.cssText = 'border:0;width:100%;height:100%;display:block'; frame.allow = 'fullscreen; camera; autoplay'; frame.srcdoc = html
   document.body.replaceChildren(frame)
-  void showLoadingDial('Opening TunaEye')
+  if (showBootDial) void showLoadingDial('Opening TunaEye')
   let landingReady = false
   const prepareLanding = () => {
     const landing = frame.contentWindow as Kiosk
     if (landingReady || !landing?.document.getElementById('kiosk-src') || typeof (landing as any).openKiosk !== 'function') return
     landingReady = true
     landing.document.addEventListener('click', event => {
+      if ((event.target as Element)?.closest('[data-act="install"]')) { event.preventDefault(); event.stopImmediatePropagation(); void requestPwaInstall().then(message => landing.alert(message)); return }
       if ((event.target as Element)?.closest('[data-act="start"]')) void showLoadingDial('Opening grading kiosk')
     }, true)
     const tablet = navigator.maxTouchPoints > 0 && Math.min(screen.width, screen.height) >= 600 && (navigator.userAgent.includes('Android') || navigator.userAgent.includes('iPad') || navigator.platform === 'MacIntel')
@@ -233,9 +297,8 @@ export function launchExactUI() {
     prepareLanding()
     const child = frame.contentDocument?.querySelector<HTMLIFrameElement>('#kiosk-wrap iframe')?.contentWindow as Kiosk | null
     if (child && !(child as any).__tunaeyeAttached) {
-      try { child.eval('S'); (child as any).__tunaeyeAttached = true; runtime.attach(child) } catch { /* Wait until the supplied kiosk has initialized. */ }
+      try { child.eval('S'); runtime.attach(child); (child as any).__tunaeyeAttached = true } catch (error) { console.error('Kiosk initialization failed', error) }
     }
   }, 100)
   window.addEventListener('pagehide', () => clearInterval(timer), { once: true })
-  if ('serviceWorker' in navigator && import.meta.env.PROD) void navigator.serviceWorker.register('/sw.js')
 }

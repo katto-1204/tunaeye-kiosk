@@ -1,5 +1,16 @@
 # Plan
 
+## Kiosk stability, offline storage and hardware-flow fixes (2026-11-18)
+
+- [ ] Preserve exact presentation; isolate compact 58mm print document with offline Code128 and paper-height controls.
+- [ ] Fix localhost production PWA caching, asset/font/install handling and attachment/transition failures; stamp coherent build caches.
+- [ ] Complete station SQLite service, browser outbox/recovery and verified PostgreSQL sync; show actual save outcome.
+- [ ] Gate live mode with real retryable Pi/camera/models/storage checklist; fix configurable protected offline admin PIN.
+- [ ] Provide A/B/C, invalid, tail and expert demo scenarios without operational writes or Pi dependencies.
+- [ ] Verify focused and integrated desktop/tablet/offline/recovery/printing tests, build production package, document limits and commit.
+
+Scope: preserve UI, fonts, features and existing default 80% decision/fusion rules. Experimental backend policy remains disabled. Physical hardware and live cloud are separate verification boundaries.
+
 ## Backend policy preparation and rejected capture safety (2026-11-18)
 
 - [ ] Keep experimental 85%/20-point policy disabled until backend validation is confirmed; prepare shared acceptance/status helpers and policy-aware messages.

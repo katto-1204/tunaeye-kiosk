@@ -1,5 +1,6 @@
 import { deleteCapturedEvidence, getCapturedEvidence, markEvidenceSynced, updateEvidenceSyncState } from './evidenceStorage'
 import { loadRecords, saveRecords, type GradingRecord } from './gradingRecords'
+import { sqliteSaveStatus } from './sqliteStore'
 import { CloudUnavailableError, ensureSupabaseUser, getSupabase, isCloudNetworkError, isSupabaseConfigured, reportCloudConnection, requireCloudConnection, type Database } from './supabase'
 
 const BUCKET = 'grading-images'
@@ -147,6 +148,7 @@ async function runPendingSync(): Promise<SyncSummary> {
     }
   }
   await pruneVerifiedLocalRecords()
+  await sqliteSaveStatus()
   return summary
 }
 

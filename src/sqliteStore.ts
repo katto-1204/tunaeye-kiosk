@@ -1,17 +1,21 @@
 import type { GradingRecord } from './gradingRecords'
+import { getCapturedEvidence } from './evidenceStorage'
 
 let pending = Promise.resolve()
 let failure: string | undefined
 export async function readSqliteRecords(): Promise<GradingRecord[]> {
-  const response = await fetch('/local-api/records', { cache: 'no-store' })
+  const response = await fetch('/local-api/records', { cache: 'no-store', signal: AbortSignal.timeout(3000) })
   if (!response.ok) throw Error('SQLite service unavailable')
-  return (await response.json()).records
+  const records = (await response.json()).records
+  if (!Array.isArray(records)) throw Error('Invalid SQLite response')
+  return records
 }
 export function queueSqliteRecords(records: GradingRecord[]) {
+  if (!records.length) return
   pending = pending.then(async () => {
     try {
       for (const record of records) {
-        const evidence = record.capturedImageId ? await (await import('./evidenceStorage')).getCapturedEvidence(record.capturedImageId) : undefined
+        const evidence = record.capturedImageId ? await getCapturedEvidence(record.capturedImageId) : undefined
         if (record.capturedImageId && !evidence) throw Error('Image missing; SQLite save incomplete')
         let image: string | undefined
         if (evidence) {
@@ -20,12 +24,22 @@ export function queueSqliteRecords(records: GradingRecord[]) {
           for (let i = 0; i < bytes.length; i += 8192) chunks.push(String.fromCharCode(...bytes.subarray(i, i + 8192)))
           image = btoa(chunks.join(''))
         }
-        const response = await fetch('/local-api/records', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ record, evidence: evidence ? { ...evidence, blob: undefined, image } : undefined }) })
-        if (!response.ok) throw Error('SQLite service did not confirm saving')
+        const response = await fetch('/local-api/records', { method: 'POST', signal: AbortSignal.timeout(8000), headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ record, evidence: evidence ? { ...evidence, blob: undefined, image } : undefined }) })
+        if (!response.ok || (await response.json()).saved !== record.id) throw Error('SQLite service did not confirm saving')
       }
       failure = undefined
     } catch (error) { failure = error instanceof Error ? error.message : 'SQLite unavailable' }
   })
+}
+
+export async function readSqliteEvidence(id: string) {
+  const response = await fetch(`/local-api/evidence/${encodeURIComponent(id)}`, { cache: 'no-store', signal: AbortSignal.timeout(3000) })
+  if (!response.ok) return undefined
+  const evidence = (await response.json()).evidence
+  if (!evidence?.image) return undefined
+  const bytes = Uint8Array.from(atob(evidence.image), char => char.charCodeAt(0))
+  const { image: _image, ...metadata } = evidence
+  return { ...metadata, blob: new Blob([bytes], { type: evidence.mimeType }) }
 }
 export async function sqliteSaveStatus(): Promise<string> {
   await pending
