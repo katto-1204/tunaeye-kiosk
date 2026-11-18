@@ -4,7 +4,7 @@ import ProductLanding, { type MarketingPage } from './MarketingLanding'
 import { PaymentReceiptPrinter } from './components/ui/payment-receipt-printer'
 import { getCapturedEvidence, saveCapturedEvidence } from './evidenceStorage'
 import { fetchCloudRecords, syncPendingRecords, syncPriceSchedule } from './cloudSync'
-import { checkCloudConnection, CLOUD_CONNECTION_EVENT, CloudUnavailableError, getSupabase, hasAdminProfile, isSupabaseConfigured, reportCloudConnection, sendAdminMagicLink } from './supabase'
+import { checkCloudConnection, CLOUD_CONNECTION_EVENT, CloudUnavailableError, hasAdminProfile, isSupabaseConfigured, reportCloudConnection, sendAdminMagicLink } from './supabase'
 import { loadRecords, saveRecords, type GradingRecord } from './gradingRecords'
 import { demoCanStart, demoScenarios, getDemoPreviewUrl, getDemoScenario, initDemoMode, isDemoMode, parseDemoGradeFromFilename, setDemoGradeHint, setDemoScenario, startPresentationDemo, stopPresentationDemo, type DemoScenario } from './demoMode'
 import { SwipeCommit } from './SwipeCommit'
@@ -249,7 +249,7 @@ function LoadingScreen() {
 function DemoControlBar({ scenario, onScenario, open, onToggle }: { scenario: DemoScenario; onScenario: (scenario: DemoScenario) => void; open: boolean; onToggle: () => void }) {
   return (
     <aside className={`demo-control-bar ${open ? 'is-open' : ''}`} aria-label="Presentation controls">
-      <button type="button" className="demo-control-trigger" onClick={onToggle} aria-label="Open presentation controls" aria-expanded={open} />
+      <button type="button" className="demo-control-trigger" onClick={onToggle} aria-label="Open presentation controls" aria-expanded={open}>DEMO</button>
       {open && <div className="demo-control-bar__scenarios" role="group" aria-label="Presentation outcome">
           {demoScenarios().map(item => (
             <button key={item.id} type="button" className={scenario === item.id ? 'is-selected' : ''} aria-pressed={scenario === item.id} onClick={() => onScenario(item.id)}>
@@ -369,7 +369,9 @@ function AdminDashboard({ onExit, onStartGrading, onNotice }: { onExit: () => vo
   const [connections, setConnections] = useState(getConnectionSettings)
   const [rpiStatus, setRpiStatus] = useState<'Not checked' | 'Checking' | 'Connected' | 'Unavailable'>('Not checked')
   const [auditEntries, setAuditEntries] = useState(loadAudit)
-  const [records, setRecords] = useState<GradingRecord[]>(() => loadRecords().filter(record => record.transaction?.syncState === 'synced'))
+  // Show ALL local records immediately — pending, failed, and synced — so freshly graded+printed records
+  // appear right away even when offline. Cloud records are fetched on top when internet is available.
+  const [records, setRecords] = useState<GradingRecord[]>(loadRecords)
   const [lastSync, setLastSync] = useState(() => localStorage.getItem('tunaeye-last-sync') ?? 'Not synced yet')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [syncing, setSyncing] = useState(false)
@@ -377,14 +379,25 @@ function AdminDashboard({ onExit, onStartGrading, onNotice }: { onExit: () => vo
 
   useEffect(() => {
     const refresh = () => {
-      setRecords(loadRecords().filter(record => record.transaction?.syncState === 'synced'))
+      // Always show all local records; never hide pending/unsynced ones
+      setRecords(loadRecords())
       setAuditEntries(loadAudit())
     }
     refresh()
-    if (isSupabaseConfigured() && navigator.onLine) void getSupabase().auth.getSession().then(async (result: { data: { session: unknown } }) => {
-      if (result.data.session) setRecords(await fetchCloudRecords())
-      setCloudStatus(result.data.session ? 'Cloud records loaded' : 'Sign in required · showing saved records')
-    }).catch(() => setCloudStatus('Cloud unavailable · showing saved records'))
+    if (isSupabaseConfigured() && navigator.onLine) void (async () => {
+      try {
+        // fetchCloudRecords() calls ensureSupabaseUser() which signs in anonymously if needed —
+        // no pre-existing session required. The PIN gate is enough for local admin access.
+        const cloud = await fetchCloudRecords()
+        const local = loadRecords()
+        const cloudIds = new Set(cloud.map(r => r.id))
+        const localOnly = local.filter(r => !cloudIds.has(r.id))
+        setRecords([...cloud, ...localOnly])
+        setCloudStatus('Cloud records loaded')
+      } catch {
+        setCloudStatus('Cloud unavailable · showing saved records')
+      }
+    })()
     window.addEventListener('storage', refresh)
     window.addEventListener('tunaeye-records-updated', refresh)
     return () => {
@@ -444,25 +457,110 @@ function AdminDashboard({ onExit, onStartGrading, onNotice }: { onExit: () => vo
     {section === 'Settings' && <div className="admin-page-card settings-form"><div><h2>Station and connection settings</h2><p>Configure the kiosk and local Raspberry Pi. Supabase credentials come only from deployment environment variables.</p></div><div className="connection-settings"><label>Station name<input value={stationName} onChange={event => setStationName(event.target.value)} /></label><label>Raspberry Pi API URL<input value={connections.rpiUrl} onChange={event => setConnections({ ...connections, rpiUrl: event.target.value })} /></label><label>AI model identifier<input value={connections.modelName} onChange={event => setConnections({ ...connections, modelName: event.target.value })} /></label><label>Supabase cloud<input value={isSupabaseConfigured() ? 'Configured from environment' : 'Not configured'} disabled /></label></div><div className="connection-status"><span className={`status-label ${rpiStatus === 'Connected' ? 'status-label--valid' : rpiStatus === 'Unavailable' ? 'status-label--invalid' : 'status-label--uncertain'}`}>Raspberry Pi: {rpiStatus}</span><span>Active model: <strong>{connections.modelName}</strong></span><Button variant="secondary" icon="refresh" onClick={testRpi} disabled={rpiStatus === 'Checking'}>{rpiStatus === 'Checking' ? 'Checking…' : 'Test RPi connection'}</Button></div><label>Maximum accepted weight<input value="200 kg" disabled /></label><label className="settings-toggle"><span><strong>Offline mode</strong><small>Keep the PWA available without internet</small></span><input type="checkbox" defaultChecked /></label><label className="settings-toggle"><span><strong>Automatic printing</strong><small>Open print dialog after each completed session</small></span><input type="checkbox" /></label><div className="admin-card-actions"><span>Use only a publishable/anon key in Vite. Never expose a service-role key.</span><Button icon="check" onClick={() => { localStorage.setItem('tunaeye-station', stationName); localStorage.setItem('tunaeye-rpi-url', connections.rpiUrl); localStorage.setItem('tunaeye-model-name', connections.modelName); audit('Admin', 'Settings updated', 'Station and local edge settings saved'); onNotice?.({ title: 'Settings Saved', message: 'Station identity and Raspberry Pi settings were saved.', icon: 'check' }) }}>Save settings</Button></div></div>}
   </section></div>
 }
-function AdminRecords({ records, compact = false, onViewAll }: { records: GradingRecord[]; compact?: boolean; onViewAll?: () => void }) {
+type RecordsSourceFilter = 'all' | 'live' | 'demo'
+type RecordsGradeFilter = 'all' | 'A' | 'B' | 'C' | 'Invalid'
+type RecordsSyncFilter = 'all' | 'pending' | 'synced' | 'failed'
+
+function AdminRecords({ records, compact = false, onViewAll, showFilters = true }: { records: GradingRecord[]; compact?: boolean; onViewAll?: () => void; showFilters?: boolean }) {
   const [page, setPage] = useState(1)
   const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null)
+  const [sourceFilter, setSourceFilter] = useState<RecordsSourceFilter>('all')
+  const [gradeFilter, setGradeFilter] = useState<RecordsGradeFilter>('all')
+  const [syncFilter, setSyncFilter] = useState<RecordsSyncFilter>('all')
+
+  // Detect whether any demo records exist so we can show the Demo chip
+  const hasDemoRecords = records.some(r => r.result?.modelSource === 'demo')
+  const hasLiveRecords = records.some(r => r.result?.modelSource !== 'demo')
+
+  const filtered = records.filter(record => {
+    if (sourceFilter === 'demo' && record.result?.modelSource !== 'demo') return false
+    if (sourceFilter === 'live' && record.result?.modelSource === 'demo') return false
+    if (gradeFilter !== 'all' && record.grade !== gradeFilter) return false
+    if (syncFilter !== 'all') {
+      const state = record.transaction?.syncState ?? 'pending'
+      if (syncFilter === 'pending' && state !== 'pending') return false
+      if (syncFilter === 'synced' && state !== 'synced') return false
+      if (syncFilter === 'failed' && state !== 'failed') return false
+    }
+    return true
+  })
+
   const selectedRecord = records.find(record => record.id === selectedRecordId)
   const pageSize = 8
-  const totalPages = Math.max(1, Math.ceil(records.length / pageSize))
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
   const safePage = Math.min(page, totalPages)
-  const displayed = compact ? records.slice(0, 5) : records.slice((safePage - 1) * pageSize, safePage * pageSize)
-  useEffect(() => setPage(1), [records.length])
+  const displayed = compact ? filtered.slice(0, 5) : filtered.slice((safePage - 1) * pageSize, safePage * pageSize)
+  useEffect(() => setPage(1), [filtered.length, sourceFilter, gradeFilter, syncFilter])
+
+  const ChipGroup = ({ label, options, value, onChange }: { label: string; options: { id: string; label: string }[]; value: string; onChange: (v: string) => void }) => (
+    <div className="record-filter-group" role="group" aria-label={label}>
+      <span className="record-filter-label">{label}</span>
+      {options.map(opt => (
+        <button key={opt.id} type="button" className={`record-filter-chip ${value === opt.id ? 'is-active' : ''}`} aria-pressed={value === opt.id} onClick={() => onChange(opt.id)}>
+          {opt.label}
+        </button>
+      ))}
+    </div>
+  )
 
   return (
     <div className={`admin-table-card ${compact ? 'admin-table-card--compact' : ''}`}>
       <div className="admin-section-title">
         <div>
           <h2>{compact ? 'Recent records' : 'Grading records'}</h2>
-          <p>{records.length} session{records.length === 1 ? '' : 's'} total{!compact && records.length > pageSize && ` · Page ${safePage} of ${totalPages}`}</p>
+          <p>
+            {filtered.length !== records.length
+              ? `${filtered.length} of ${records.length} record${records.length === 1 ? '' : 's'}${!compact && filtered.length > pageSize ? ` · Page ${safePage} of ${totalPages}` : ''}`
+              : `${records.length} record${records.length === 1 ? '' : 's'} total${!compact && records.length > pageSize ? ` · Page ${safePage} of ${totalPages}` : ''}`
+            }
+          </p>
         </div>
         {onViewAll && <button onClick={onViewAll}>View all <Icon name="arrow" size={17} /></button>}
       </div>
+
+      {showFilters && records.length > 0 && (
+        <div className="record-filters">
+          {/* Source chip: show whenever demo records exist (even if only demo) */}
+          {hasDemoRecords && (
+            <ChipGroup
+              label="Source"
+              value={sourceFilter}
+              onChange={v => setSourceFilter(v as RecordsSourceFilter)}
+              options={[
+                { id: 'all', label: 'All' },
+                ...(hasLiveRecords ? [{ id: 'live', label: '🟢 Live' }] : []),
+                { id: 'demo', label: '🟡 Demo' },
+              ]}
+            />
+          )}
+          <ChipGroup
+            label="Grade"
+            value={gradeFilter}
+            onChange={v => setGradeFilter(v as RecordsGradeFilter)}
+            options={[
+              { id: 'all', label: 'All' },
+              { id: 'A', label: 'Grade A' },
+              { id: 'B', label: 'Grade B' },
+              { id: 'C', label: 'Grade C' },
+              { id: 'Invalid', label: 'Invalid' },
+            ]}
+          />
+          {!compact && (
+            <ChipGroup
+              label="Sync"
+              value={syncFilter}
+              onChange={v => setSyncFilter(v as RecordsSyncFilter)}
+              options={[
+                { id: 'all', label: 'All' },
+                { id: 'synced', label: '✓ Synced' },
+                { id: 'pending', label: '⏳ Pending' },
+                { id: 'failed', label: '⚠ Failed' },
+              ]}
+            />
+          )}
+        </div>
+      )}
+
       <div className="admin-table">
         <div className="admin-table__head">
           <span>Record</span>
@@ -472,10 +570,16 @@ function AdminRecords({ records, compact = false, onViewAll }: { records: Gradin
           <span>Grade</span>
           <span>Status</span>
         </div>
+        {displayed.length === 0 && (
+          <div className="admin-table__empty">
+            <Icon name="database" size={28} />
+            <span>No records match the selected filters.</span>
+          </div>
+        )}
         {displayed.map(record => (
-          <div key={record.id} className="grader-record-item" role="button" tabIndex={0} onClick={() => setSelectedRecordId(record.id)} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') setSelectedRecordId(record.id) }}>
+          <div key={record.id} className={`grader-record-item ${record.result?.modelSource === 'demo' ? 'grader-record-item--demo' : ''}`} role="button" tabIndex={0} onClick={() => setSelectedRecordId(record.id)} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') setSelectedRecordId(record.id) }}>
             <span><strong>{record.id}</strong><small>{record.time}</small></span>
-            <span>{record.grader}</span>
+            <span>{record.grader}{record.result?.modelSource === 'demo' && <em className="demo-badge">DEMO</em>}</span>
             <span className="record-sample-cell"><StoredEvidenceImage evidenceId={record.capturedImageId} legacySource={record.capturedImage} alt={`Captured ${record.sample}`} /><strong>{record.sample}</strong><small>{record.fish} · {record.result?.originalConfidence ? `${record.result.originalConfidence}% confidence` : 'Result saved'}</small><ImageSyncLabel record={record} /></span>
             <span>{record.weight}</span>
             <span className={`table-grade table-grade--${record.grade}`}>{record.grade}</span>
@@ -485,7 +589,7 @@ function AdminRecords({ records, compact = false, onViewAll }: { records: Gradin
       </div>
       {!compact && (
         <div className="admin-pagination">
-          <span>Showing {records.length ? (safePage - 1) * pageSize + 1 : 0}–{Math.min(safePage * pageSize, records.length)} of {records.length}</span>
+          <span>Showing {filtered.length ? (safePage - 1) * pageSize + 1 : 0}–{Math.min(safePage * pageSize, filtered.length)} of {filtered.length}</span>
           <div className="admin-pagination__controls">
             <button className="admin-pagination__btn" disabled={safePage <= 1} onClick={() => setPage(p => Math.max(1, p - 1))}>Previous</button>
             <span>Page <strong>{safePage}</strong> of <strong>{totalPages}</strong></span>
@@ -493,7 +597,7 @@ function AdminRecords({ records, compact = false, onViewAll }: { records: Gradin
           </div>
         </div>
       )}
-      {selectedRecord && <div className="record-review-backdrop" role="dialog" aria-modal="true" aria-label={`Record ${selectedRecord.id}`} onClick={() => setSelectedRecordId(null)}><article className="record-review" onClick={event => event.stopPropagation()}><header><div><span className="eyebrow">Captured tuna record</span><h2>{selectedRecord.id}</h2><p>{selectedRecord.time} · {selectedRecord.grader}</p></div><button className="icon-button" onClick={() => setSelectedRecordId(null)} aria-label="Close record">×</button></header>{selectedRecord.capturedImageId || selectedRecord.capturedImage ? <StoredEvidenceImage className="record-review__image" evidenceId={selectedRecord.capturedImageId} legacySource={selectedRecord.capturedImage} alt={`Captured ${selectedRecord.sample}`} /> : <div className="record-review__missing">Captured image unavailable for this older record.</div>}<ImageSyncLabel record={selectedRecord} /><div className="record-review__grade"><span>Final result</span><strong>Grade {selectedRecord.grade}</strong><small>{selectedRecord.result?.originalConfidence ?? '—'}% original confidence</small></div><dl><div><dt>Sample</dt><dd>{selectedRecord.sample}</dd></div><div><dt>Fish association</dt><dd>{selectedRecord.fish}</dd></div><div><dt>Weight</dt><dd>{selectedRecord.weight}</dd></div><div><dt>Fish value</dt><dd>{peso(selectedRecord.transaction?.amount)}</dd></div><div><dt>Model result</dt><dd>{selectedRecord.result?.originalGrade ? `Grade ${selectedRecord.result.originalGrade}` : selectedRecord.result?.status ?? selectedRecord.status}</dd></div><div><dt>Sync status</dt><dd>{selectedRecord.transaction?.syncState === 'synced' ? 'Synced' : selectedRecord.transaction?.syncState === 'syncing' ? 'Syncing' : selectedRecord.transaction?.syncState === 'failed' ? 'Sync needs retry' : 'Saved locally'}</dd></div></dl>{selectedRecord.result?.overrideReason && <p className="record-review__reason"><strong>Override reason:</strong> {selectedRecord.result.overrideReason}</p>}</article></div>}
+      {selectedRecord && <div className="record-review-backdrop" role="dialog" aria-modal="true" aria-label={`Record ${selectedRecord.id}`} onClick={() => setSelectedRecordId(null)}><article className="record-review" onClick={event => event.stopPropagation()}><header><div><span className="eyebrow">{selectedRecord.result?.modelSource === 'demo' ? 'Demo grading record' : 'Captured tuna record'}</span><h2>{selectedRecord.id}</h2><p>{selectedRecord.time} · {selectedRecord.grader}</p></div><button className="icon-button" onClick={() => setSelectedRecordId(null)} aria-label="Close record">×</button></header>{selectedRecord.capturedImageId || selectedRecord.capturedImage ? <StoredEvidenceImage className="record-review__image" evidenceId={selectedRecord.capturedImageId} legacySource={selectedRecord.capturedImage} alt={`Captured ${selectedRecord.sample}`} /> : <div className="record-review__missing">Captured image unavailable for this older record.</div>}<ImageSyncLabel record={selectedRecord} /><div className="record-review__grade"><span>Final result</span><strong>Grade {selectedRecord.grade}</strong><small>{selectedRecord.result?.originalConfidence ?? '—'}% original confidence</small></div><dl><div><dt>Sample</dt><dd>{selectedRecord.sample}</dd></div><div><dt>Fish association</dt><dd>{selectedRecord.fish}</dd></div><div><dt>Weight</dt><dd>{selectedRecord.weight}</dd></div><div><dt>Fish value</dt><dd>{peso(selectedRecord.transaction?.amount)}</dd></div><div><dt>Model result</dt><dd>{selectedRecord.result?.originalGrade ? `Grade ${selectedRecord.result.originalGrade}` : selectedRecord.result?.status ?? selectedRecord.status}</dd></div><div><dt>Source</dt><dd>{selectedRecord.result?.modelSource === 'demo' ? 'Demo mode' : 'Raspberry Pi AI'}</dd></div><div><dt>Sync status</dt><dd>{selectedRecord.transaction?.syncState === 'synced' ? 'Synced to cloud' : selectedRecord.transaction?.syncState === 'syncing' ? 'Syncing…' : selectedRecord.transaction?.syncState === 'failed' ? 'Sync needs retry' : 'Saved locally · will sync when online'}</dd></div></dl>{selectedRecord.result?.overrideReason && <p className="record-review__reason"><strong>Override reason:</strong> {selectedRecord.result.overrideReason}</p>}</article></div>}
     </div>
   )
 }
@@ -728,11 +832,11 @@ function AdminDevices({ rpiUrl, modelName, audit, onNotice }: { rpiUrl: string; 
 
 function GraderDashboard({ name, onStart, onLogout, onNotice }: { name: string; onStart: () => void; onLogout: () => void; onNotice: (notice: NoticeModalData) => void }) {
   const graderName = (name && name.trim()) || localStorage.getItem('tunaeye-grader-name') || 'Maria Santos'
-  const getRelevantRecords = () => {
+  const getRelevantRecords = useCallback(() => {
     const all = loadRecords()
     const filtered = all.filter(record => record.grader.toLowerCase() === graderName.toLowerCase())
     return filtered.length > 0 ? filtered : all
-  }
+  }, [graderName])
   const [records, setRecords] = useState(getRelevantRecords)
   const [lastSync, setLastSync] = useState(() => localStorage.getItem('tunaeye-last-sync') ?? 'Just now')
   const [syncing, setSyncing] = useState(false)
@@ -748,7 +852,7 @@ function GraderDashboard({ name, onStart, onLogout, onNotice }: { name: string; 
       window.removeEventListener('storage', refresh)
       window.removeEventListener('tunaeye-records-updated', refresh)
     }
-  }, [graderName])
+  }, [getRelevantRecords])
 
   const today = new Date().toDateString()
   const todayRecords = records.filter(record => new Date(record.timestamp).toDateString() === today)
@@ -829,8 +933,8 @@ function GraderDashboard({ name, onStart, onLogout, onNotice }: { name: string; 
         {/* RIGHT: Records */}
         <div className="grader-bento-v2__right">
           {records.length
-            ? <AdminRecords records={records.slice(0, 8)} compact />
-            : <div className="grader-dashboard__empty"><Icon name="database" size={34} /><h2>No grading records yet</h2><p>Start a grading session to create your first synced record.</p></div>
+            ? <AdminRecords records={records} compact />
+            : <div className="grader-dashboard__empty"><Icon name="database" size={34} /><h2>No grading records yet</h2><p>Complete a grading session to see your records here. They are saved on this device and synced to the cloud when internet is available.</p></div>
           }
         </div>
       </div>
@@ -1396,7 +1500,6 @@ function App() {
   const [booting, setBooting] = useState(true)
   const [webIntroDismissed, setWebIntroDismissed] = useState(false)
   const [publicLandingRequested, setPublicLandingRequested] = useState(false)
-  const [adminCloudAuthRequired, setAdminCloudAuthRequired] = useState(false)
   const [marketingPage, setMarketingPage] = useState<MarketingPage>(() => marketingPageForPath(window.location.pathname))
   const [tutorialOpen, setTutorialOpen] = useState(false)
   const [legalKind, setLegalKind] = useState<'terms' | 'privacy' | null>(null)
@@ -1439,12 +1542,6 @@ function App() {
     events.forEach(event => window.addEventListener(event, markActivity, { passive: true }))
     return () => events.forEach(event => window.removeEventListener(event, markActivity))
   }, [])
-  useEffect(() => {
-    if (currentPathScreen !== 'admin' || !requiresHostedAdminAuth()) return
-    void hasAdminProfile().then(isAdmin => {
-      if (isAdmin) dispatch({ type: 'adminAuthenticated' })
-    }).catch(error => console.error('[TunaEye] Hosted admin session check failed:', error))
-  }, [currentPathScreen])
   const go = useCallback((screen: Screen) => { dispatch({ type: 'navigate', screen }); window.history.pushState({}, '', pathForScreen(screen)) }, [])
   const goHome = useCallback(() => { clearCapturedEvidence(); gradingSessionRef.current = { id: createId(), timestamp: Date.now() }; dispatch({ type: 'reset' }); window.history.pushState({}, '', '/') }, [])
   const graderHome = useCallback(() => { clearCapturedEvidence(); dispatch({ type: 'navigate', screen: 'grader-dashboard' }); window.history.pushState({}, '', pathForScreen('grader-dashboard')) }, [])
@@ -1591,7 +1688,7 @@ function App() {
     switch (session.screen) {
       case 'welcome': return <WelcomeScreen onStart={() => { enterFullscreen(); go('select-role') }} onDemo={demoCanStart() ? openLiveDemo : undefined} onInstall={installApp} installed={installed} onTutorial={() => setTutorialOpen(true)} onGoMain={() => { setMarketingPage('home'); setPublicLandingRequested(true); window.history.pushState({}, '', '/') }} />
       case 'select-role': return <SelectRoleScreen onRole={openRole} onBack={back} />
-      case 'admin': return adminCloudAuthRequired ? <AdminMagicLinkScreen onBack={() => { setAdminCloudAuthRequired(false); back() }} /> : <AdminPinScreen value={session.adminPin} error={session.adminError} onChange={value => dispatch({ type: 'setAdminPin', value })} onContinue={() => { if (session.adminPin === ADMIN_PIN) { audit('Admin', 'Login', 'Administrator authenticated at the kiosk'); if (requiresHostedAdminAuth()) void hasAdminProfile().then(isAdmin => { if (isAdmin) dispatch({ type: 'adminAuthenticated' }); else setAdminCloudAuthRequired(true) }).catch(error => setNoticeModal({ title: 'Hosted admin login unavailable', message: error instanceof Error ? error.message : 'Supabase admin access could not be checked.', icon: 'help' })); else dispatch({ type: 'adminAuthenticated' }) } else { audit('Unknown', 'Failed admin login', 'Incorrect admin PIN'); dispatch({ type: 'adminError', message: 'Incorrect admin PIN.' }) } }} onBack={back} />
+      case 'admin': return <AdminPinScreen value={session.adminPin} error={session.adminError} onChange={value => dispatch({ type: 'setAdminPin', value })} onContinue={() => { if (session.adminPin === ADMIN_PIN) { audit('Admin', 'Login', 'Administrator authenticated at the kiosk'); dispatch({ type: 'adminAuthenticated' }); if (requiresHostedAdminAuth()) { void hasAdminProfile().then(isAdmin => { if (isAdmin) audit('Admin', 'Cloud profile', 'Supabase admin profile verified') }).catch(() => { /* offline */ }) } } else { audit('Unknown', 'Failed admin login', 'Incorrect admin PIN'); dispatch({ type: 'adminError', message: 'Incorrect admin PIN.' }) } }} onBack={back} />
       case 'admin-dashboard': return <AdminDashboard onExit={goHome} onNotice={setNoticeModal} onStartGrading={() => { dispatch({ type: 'setRole', role: 'expert' }); go(session.graderName ? 'grader-dashboard' : 'grader') }} />
       case 'grader': return <GraderEntryScreen name={session.graderName} remember={session.rememberName} onName={value => dispatch({ type: 'setGraderName', value })} onRemember={value => dispatch({ type: 'setRememberName', value })} onContinue={() => { dispatch({ type: 'setSamples', samples: ['Sashibo core'] }); dispatch({ type: 'setSameFish', value: 'same' }); go('weight') }} onBack={back} onLegal={setLegalKind} />
       case 'grader-dashboard': return <GraderDashboard name={session.graderName} onStart={gradeAnother} onLogout={goHome} onNotice={setNoticeModal} />

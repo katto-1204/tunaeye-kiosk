@@ -58,13 +58,15 @@ export const isSupabaseConfigured = () => Boolean(url && anonKey)
 export const CLOUD_CONNECTION_EVENT = 'tunaeye-cloud-connection'
 export class CloudUnavailableError extends Error {
   constructor() {
-    super('Sync is waiting for internet. Tuna RPi Wi-Fi can provide camera and grading access without internet. Your captured images and records are saved on this device. Use Sync now when internet is available.')
+    super(typeof navigator !== 'undefined' && navigator.onLine
+      ? 'Your internet is working, but the TunaEye cloud server could not be reached (check the Supabase project URL and that the project is active). Your captured images and records are saved on this device and will sync once the cloud server responds.'
+      : 'Sync is waiting for internet. Tuna RPi Wi-Fi can provide camera and grading access without internet. Your captured images and records are saved on this device. Use Sync now when internet is available.')
     this.name = 'CloudUnavailableError'
   }
 }
 
 export function isCloudNetworkError(error: unknown) {
-  return error instanceof CloudUnavailableError || (error instanceof Error && error.name === 'AuthRetryableFetchError') || /failed to fetch|fetch failed|networkerror|network request failed|load failed/i.test(error && typeof error === 'object' && 'message' in error ? String(error.message) : '')
+  return error instanceof CloudUnavailableError || (error instanceof Error && error.name === 'AuthRetryableFetchError') || /failed to fetch|fetch failed|networkerror|network request failed|load failed|err_name_not_resolved|name_not_resolved|dns/i.test(error && typeof error === 'object' && 'message' in error ? String(error.message) : '')
 }
 
 export function reportCloudConnection(available: boolean) {

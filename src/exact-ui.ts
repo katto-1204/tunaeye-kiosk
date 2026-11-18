@@ -219,9 +219,9 @@ const runtime = {
           finally { if (start.isConnected) start.disabled = !S.name.trim() }
         }
         if (isDemoMode()) {
-          const choices = d.createElement('select'); choices.setAttribute('aria-label', 'Demo scenario'); choices.className = 'inp'; choices.style.cssText = 'position:absolute;left:34px;right:34px;bottom:160px;width:calc(100% - 68px);height:42px;font-size:14px'
-          choices.innerHTML = demoScenarios().map(item => `<option value="${item.id}">${item.label} · ${item.detail}</option>`).join(''); choices.value = getDemoScenario()
-          choices.onchange = () => setDemoScenario(choices.value as DemoScenario); start.parentElement!.append(choices)
+          const choices = d.createElement('select'); choices.setAttribute('aria-label', 'Demo scenario'); choices.className = 'inp'; choices.style.cssText = 'position:absolute;left:14px;bottom:14px;z-index:5;width:auto;max-width:190px;height:26px;padding:0 22px 0 10px;border-radius:999px;font-size:11px;font-weight:700;box-shadow:0 2px 8px rgba(18,59,112,.12)'
+          choices.innerHTML = demoScenarios().map(item => `<option value="${item.id}" title="${item.detail}">${item.label}</option>`).join(''); choices.value = getDemoScenario()
+          choices.onchange = () => setDemoScenario(choices.value as DemoScenario); (start.parentElement!.parentElement ?? start.parentElement!).append(choices)
         }
       }
       if (isDemoMode() && S.scr === 'final') d.querySelectorAll('.lg5').forEach(e => e.textContent = 'Simulated prediction · Demo only · Not saved as an operational grade')
