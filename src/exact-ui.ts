@@ -6,7 +6,7 @@ import { experimentalPolicy, policyDescription } from './gradingPolicy'
 import { sqliteSaveStatus } from './sqliteStore'
 import { loadRecords, saveRecords, type GradingRecord } from './gradingRecords'
 import { loadPriceSchedule, priceSnapshot } from './pricing'
-import { syncPendingRecords, syncPriceSchedule, SYNC_STATUS_EVENT, type SyncPhase } from './cloudSync'
+import { syncPendingRecords, syncPriceSchedule, syncGradersToCloud, SYNC_STATUS_EVENT, type SyncPhase } from './cloudSync'
 import { checkCloudConnection, hasAdminProfile, isSupabaseConfigured, sendAdminMagicLink } from './supabase'
 import { createId } from './id'
 import { showLoadingDial } from './exact-loading'
@@ -44,8 +44,10 @@ function registerGrader(name: string) {
     if (!list.some(item => item.toLocaleLowerCase() === clean.toLocaleLowerCase())) {
       localStorage.setItem('tunaeye-graders', JSON.stringify([clean, ...list]))
     }
+    if (navigator.onLine && isSupabaseConfigured()) void syncGradersToCloud([clean])
   } catch {
     localStorage.setItem('tunaeye-graders', JSON.stringify([clean]))
+    if (navigator.onLine && isSupabaseConfigured()) void syncGradersToCloud([clean])
   }
 }
 function persist(w: Kiosk) {
@@ -514,6 +516,8 @@ export function launchExactUI(showBootDial = true) {
     if (!loadRecords().some(record => record.transaction?.syncState !== 'synced')) return
     lastAutoSyncAt = Date.now()
     if (!await checkCloudConnection()) return
+    const savedGraders = (() => { try { return JSON.parse(localStorage.getItem('tunaeye-graders') ?? '[]') as string[] } catch { return [] } })()
+    if (savedGraders.length) void syncGradersToCloud(savedGraders)
     const result = await syncPendingRecords({ limit: 10 }).catch(() => null)
     if (result && result.synced > 0) {
       localStorage.setItem('tunaeye-last-sync', new Date().toISOString())

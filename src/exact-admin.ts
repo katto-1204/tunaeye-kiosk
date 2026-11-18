@@ -1,6 +1,6 @@
 import { loadRecords, saveRecords, type GradingRecord } from './gradingRecords'
 import { getCapturedEvidence, deleteCapturedEvidence } from './evidenceStorage'
-import { fetchCloudRecords, syncPendingRecords, syncPriceSchedule } from './cloudSync'
+import { fetchCloudGraders, fetchCloudRecords, syncGradersToCloud, syncPendingRecords, syncPriceSchedule } from './cloudSync'
 import { loadPriceSchedule, peso } from './pricing'
 import { capturePiImage, checkPiHealth, getPiSettings } from './piClient'
 import { getSupabase, isSupabaseConfigured, sendAdminMagicLink } from './supabase'
@@ -32,7 +32,16 @@ export function enhanceAdmin(w: Window, context: Context) {
     void (async () => {
       try {
         await syncPendingRecords({ limit: 10 }).catch(() => null)
-        v.cloud = await fetchCloudRecords(200)
+        const localGraders = read<string[]>('tunaeye-graders', [])
+        if (localGraders.length) await syncGradersToCloud(localGraders)
+        const [cloudRows, cloudGraders] = await Promise.all([fetchCloudRecords(200), fetchCloudGraders()])
+        v.cloud = cloudRows
+        if (cloudGraders.length) {
+          const merged = [...localGraders]
+          const seen = new Set(merged.map(g => g.trim().toLocaleLowerCase()))
+          for (const g of cloudGraders) if (!seen.has(g.toLocaleLowerCase())) { seen.add(g.toLocaleLowerCase()); merged.push(g) }
+          localStorage.setItem('tunaeye-graders', JSON.stringify(merged))
+        }
         if (w.document.body.contains(body)) enhanceAdmin(w, context)
       } catch { } finally { v.syncingCloud = false }
     })()
@@ -148,7 +157,7 @@ export function enhanceAdmin(w: Window, context: Context) {
   wireReview(); if (state.tab === 'records') { renderRows(); const search = get<HTMLInputElement>('ea-search'); if (search) search.oninput = () => { v.query = search.value; v.page = 1; renderRows() } }
   bind('ea-cloud', async () => { if (!isSupabaseConfigured()) return tell('Cloud is not configured in this build.', true); try { v.cloud = await fetchCloudRecords(); draw(); tell('Cloud records loaded') } catch (e) { tell(e instanceof Error ? e.message : 'Cloud records unavailable', true) } })
   bind('ea-export', () => { const fields = ['id', 'grader', 'sample', 'weight', 'grade', 'status'] as const, quote = (text: unknown) => '"' + String(text ?? '').replaceAll('"', '""') + '"', csv = [fields.join(','), ...records.map(row => fields.map(field => quote(row[field])).join(','))].join('\r\n'), url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' })), a = d.createElement('a'); a.href = url; a.download = 'tunaeye-records.csv'; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); audit('Records exported', `${records.length} records exported to CSV`) })
-  bind('ea-grader-add', () => { const name = value('ea-grader-name'); if (!name) return tell('Enter the grader’s full name.', true); if (graders.some(item => item.toLocaleLowerCase() === name.toLocaleLowerCase())) return tell('That grader is already registered.', true); saveGraders([...graders, name]); audit('Grader added', name) })
+  bind('ea-grader-add', () => { const name = value('ea-grader-name'); if (!name) return tell('Enter the grader’s full name.', true); if (graders.some(item => item.toLocaleLowerCase() === name.toLocaleLowerCase())) return tell('That grader is already registered.', true); saveGraders([...graders, name]); void syncGradersToCloud([name]); audit('Grader added', name) })
   body.querySelectorAll<HTMLButtonElement>('[data-remove-grader]').forEach(el => el.onclick = () => { const index = Number(el.dataset.removeGrader), name = graders[index]; const modal = (w as Window & { eval: (s: string) => any }).eval('modal'); modal({ title: 'Remove grader?', body: `${name} will no longer be offered for new sessions. Historical records remain.`, ok: 'Remove', onOk: () => { saveGraders(graders.filter((_, i) => i !== index)); audit('Grader removed', name) } }) })
   bind('ea-prices-save', async () => { const prices = Object.fromEntries((['A', 'B', 'C'] as Grade[]).map(grade => [grade, Number(value(`ea-price-${grade}`))])) as Record<Grade, number>; if (Object.values(prices).some(number => !Number.isFinite(number) || number < 0)) return tell('Enter a non-negative price for every grade.', true); localStorage.setItem('tunaeye-prices', JSON.stringify(prices)); Object.assign((w as Window & { eval: (s: string) => any }).eval('RATE'), prices); audit('Prices updated', 'Local price schedule saved'); try { await syncPriceSchedule(prices); tell('Price schedule saved and verified in cloud') } catch (e) { tell(`Prices saved locally. ${e instanceof Error ? e.message : 'Cloud sync unavailable.'}`, true) } })
   bind('ea-settings-save', () => { const endpoint = value('ea-api'), camera = value('ea-camera'); for (const url of [endpoint, camera]) if (url && !/^https?:\/\/[^\s]+$/i.test(url)) return tell('Use a valid HTTP or HTTPS device URL.', true); if (!value('ea-station')) return tell('Enter a station name.', true); localStorage.setItem('tunaeye-station', value('ea-station')); localStorage.setItem('tunaeye-rpi-url', endpoint); localStorage.setItem('tunaeye-camera-url', camera); localStorage.setItem('tunaeye-model-name', value('ea-model')); Object.assign(state.cfg, { name: value('ea-station'), url: endpoint, model: value('ea-model') }); audit('Settings updated', 'Station and Pi connection settings saved'); tell('Station settings saved') })

@@ -41,6 +41,12 @@ export type Database = {
         Update: Partial<Database['public']['Tables']['price_schedules']['Insert']>
         Relationships: []
       }
+      station_graders: {
+        Row: { id: string; user_id: string; station_id: string; grader_name: string; active: boolean; last_seen_at: string; created_at: string }
+        Insert: { id: string; user_id: string; station_id: string; grader_name: string; active?: boolean; last_seen_at?: string }
+        Update: Partial<Database['public']['Tables']['station_graders']['Insert']>
+        Relationships: []
+      }
     }
     Views: Record<string, never>
     Functions: Record<string, never>

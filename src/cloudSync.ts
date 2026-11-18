@@ -214,3 +214,34 @@ async function pruneVerifiedLocalRecords() {
           transaction: { currency: row.currency_code ?? 'PHP', unitRatePerKg: row.grade_unit_rate_per_kg, amount: row.total_fish_price, syncState: 'synced' },
         }))
       }
+
+export async function syncGradersToCloud(names: string[]) {
+  const clean = [...new Set(names.map(n => n.trim()).filter(Boolean))].slice(0, 25)
+  if (!clean.length || !isSupabaseConfigured() || !navigator.onLine) return
+  try {
+    const user = await ensureSupabaseUser()
+    const supabase = getSupabase()
+    const stationId = localStorage.getItem('tunaeye-station') ?? 'TunaEye Station 01'
+    const now = new Date().toISOString()
+    await supabase.from('profiles').update({ display_name: clean[0], updated_at: now }).eq('user_id', user.id)
+    const rows = clean.map(name => ({
+      id: `${user.id}:${stationId}:${name.toLocaleLowerCase()}`,
+      user_id: user.id,
+      station_id: stationId,
+      grader_name: name,
+      active: true,
+      last_seen_at: now,
+    }))
+    await supabase.from('station_graders').upsert(rows, { onConflict: 'id' })
+  } catch { /* Offline or station_graders migration not yet applied; local list stays intact. */ }
+}
+
+export async function fetchCloudGraders(): Promise<string[]> {
+  if (!isSupabaseConfigured() || !navigator.onLine) return []
+  try {
+    await ensureSupabaseUser()
+    const { data, error } = await getSupabase().from('station_graders').select('grader_name').eq('active', true).order('last_seen_at', { ascending: false }).limit(50)
+    if (error || !data) return []
+    return [...new Set(data.map(row => row.grader_name.trim()).filter(Boolean))]
+  } catch { return [] }
+}

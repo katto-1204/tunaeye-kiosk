@@ -270,6 +270,38 @@ img.sc{padding:0;width:100%;height:100%;object-fit:cover;object-position:top;dis
 #kiosk-wrap iframe{position:absolute;inset:0;width:100%;height:100%;border:0;display:block;background:#fff}
 html.kiosk-open,html.kiosk-open body{overflow:hidden!important}
 #kiosk-wrap:fullscreen{width:100vw;height:100vh}
+/* Portfolio Documentation */
+.docp-hero{position:relative;overflow:hidden;padding:128px 24px 64px;color:#fff;background:radial-gradient(900px 520px at 85% 0%,rgba(59,139,255,.36),transparent 62%),radial-gradient(640px 420px at 10% 100%,rgba(52,211,153,.16),transparent 60%),linear-gradient(160deg,#061436 0%,#0b2870 54%,#040f29 100%)}
+.docp-gridbg{position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,.06) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.06) 1px,transparent 1px);background-size:96px 96px;pointer-events:none}
+.docp-meta{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;padding-bottom:28px;border-bottom:1px solid rgba(255,255,255,.14);font-size:12px;color:rgba(255,255,255,.72);position:relative}
+.docp-meta b{display:block;color:#fff;font-size:13px;margin-bottom:2px}
+.docp-tl{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-top:34px;padding-top:22px;border-top:1px solid rgba(255,255,255,.22);position:relative}
+.docp-tl div{position:relative;padding-top:14px}
+.docp-tl div:before{content:"";position:absolute;top:-27px;left:0;width:10px;height:10px;border-radius:50%;background:#34d399;box-shadow:0 0 0 4px rgba(52,211,153,.24)}
+.docp-tl span{display:block;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#7db7fb}
+.docp-tl strong{display:block;font-size:15px;color:#fff;margin-top:4px}
+.docp-tl p{margin:4px 0 0;font-size:12.5px;color:rgba(255,255,255,.68)}
+.docp-stage{position:relative;overflow:hidden;border-radius:30px;padding:38px 34px;color:#fff;background:radial-gradient(640px 360px at 80% 20%,rgba(59,139,255,.32),transparent 65%),linear-gradient(155deg,#071636,#040e24);border:1px solid rgba(125,183,251,.22);box-shadow:0 28px 70px -24px rgba(4,15,41,.65)}
+.docp-fan{display:flex;justify-content:center;align-items:center;gap:0;margin:28px 0 18px;padding:12px 0;min-height:240px}
+.docp-fan img{width:240px;aspect-ratio:16/10;object-fit:cover;border-radius:16px;border:2px solid rgba(255,255,255,.26);box-shadow:0 22px 44px -14px rgba(0,0,0,.65);transition:transform .3s ease,z-index .1s;cursor:zoom-in;margin-left:-44px;background:#091a42}
+.docp-fan img:first-child{margin-left:0;transform:rotate(-7deg) translateY(10px)}
+.docp-fan img:nth-child(2){transform:rotate(-3.5deg) translateY(3px)}
+.docp-fan img:nth-child(3){transform:translateY(-4px) scale(1.06);z-index:3;border-color:#7db7fb}
+.docp-fan img:nth-child(4){transform:rotate(3.5deg) translateY(3px)}
+.docp-fan img:nth-child(5){transform:rotate(7deg) translateY(10px)}
+.docp-fan img:hover{transform:translateY(-12px) scale(1.1)!important;z-index:10;border-color:#fff}
+.docp-strip{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;margin-top:16px}
+.docp-shot{position:relative;border-radius:16px;overflow:hidden;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);cursor:zoom-in;transition:transform .2s ease,border-color .2s ease}
+.docp-shot:hover{transform:translateY(-3px);border-color:#7db7fb}
+.docp-shot img{width:100%;aspect-ratio:16/10;object-fit:cover;display:block}
+.docp-shot span{display:block;padding:8px 10px;font-size:11.5px;font-weight:700;color:rgba(255,255,255,.86)}
+.docp-bento{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-top:20px}
+.docp-bcard{position:relative;border-radius:22px;overflow:hidden;background:#fff;border:1px solid #e3eaf8;box-shadow:0 12px 32px -18px rgba(18,59,112,.22);cursor:zoom-in;transition:transform .22s ease}
+.docp-bcard:hover{transform:translateY(-4px)}
+.docp-bcard.wide{grid-column:span 2}
+.docp-bcard img{width:100%;height:100%;min-height:220px;max-height:310px;object-fit:cover;display:block}
+.docp-bcap{position:absolute;left:14px;bottom:14px;padding:6px 12px;border-radius:999px;background:rgba(4,15,41,.78);color:#fff;font-size:12px;font-weight:700;backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.16)}
+@media(max-width:900px){.docp-meta,.docp-tl{grid-template-columns:1fr 1fr}.docp-strip{grid-template-columns:repeat(2,minmax(0,1fr))}.docp-bento{grid-template-columns:1fr}.docp-bcard.wide{grid-column:span 1}.docp-fan{display:none}}
 </style>
 </head>
 <body>
@@ -747,8 +779,24 @@ features:function(){var d=IN.features,k=['kiosk','cams','pi','pin','cloud','log'
 return ihead(d[0],d[1],d[2])+'<section><div class="wrap"><div class="bento">'+d[3].map(function(c,i){return '<div class="rv card bcard '+sp[i]+'" style="transition-delay:'+(i%3)*80+'ms">'+il(k[i])+'<div><h3>'+c[0]+'</h3><p>'+c[1]+'</p></div></div>'}).join('')+'</div></div></section>'+endcta()},
 about:function(){var d=IN.about,k=['purpose','method','limit'];
 return ihead(d[0],d[1],d[2])+'<section><div class="wrap">'+d[3].map(function(c,i){return '<div class="rv ab'+(i%2?' flip':'')+'"><div class="abi">'+il(k[i])+'</div><div><span class="chip">0'+(i+1)+'</span><h2>'+c[0]+'</h2><p class="lead">'+c[1]+'</p></div></div>'}).join('')+'<div class="rv card" style="margin:26px 0;padding:24px;display:flex;align-items:center;justify-content:space-between;gap:18px;flex-wrap:wrap"><div><span class="chip">Dataset Tooling</span><h3 style="margin:8px 0 6px">TunCam — Fixed Dataset Capturer &amp; Annotator</h3><p style="margin:0;color:var(--mut)">Used to capture standardized chamber photos and label our Sashibo Core and Tail-Cut training datasets with human annotators.</p></div><div style="display:flex;gap:10px;flex-wrap:wrap"><a class="pill" href="https://tuncam.vercel.app/" target="_blank" rel="noopener noreferrer" style="text-decoration:none">Open TunCam ↗</a><button class="pill" data-go="docs" style="background:#edf3ff;color:var(--b1);box-shadow:none">Read Documentation</button></div></div><div class="ct" style="margin-top:30px"><span class="chip">How the expert stays in charge</span>'+flowRow([['doc','Expert-annotated datasets','Traits graders already look for'],['cam','Standardized acquisition','Same light, same capture'],['brain','Transfer learning','CNN that mirrors grader traits'],['eye','Expert review','The grader decides']])+'</div></div></section>'+endcta()},
-docs:function(){var d=IN.docs,gal=function(list){return '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px;margin-top:16px">'+list.map(function(src){return '<div class="rv card" style="padding:8px;overflow:hidden"><img src="'+src+'" loading="lazy" alt="TunaEye documentation" style="width:100%;aspect-ratio:16/10;object-fit:cover;border-radius:14px;display:block"></div>'}).join('')+'</div>'};
-return ihead(d[0],d[1],d[2])+'<section><div class="wrap"><div class="rv card" style="margin-bottom:24px;padding:24px;display:flex;align-items:center;justify-content:space-between;gap:18px;flex-wrap:wrap"><div><span class="chip">Dataset Capture &amp; Labelling Tool</span><h3 style="margin:8px 0 6px">https://tuncam.vercel.app/</h3><p style="margin:0;color:var(--mut)">Our fixed dataset capturer and dataset labeller with annotator workflow for yellowfin tuna grading.</p></div><a class="pill" href="https://tuncam.vercel.app/" target="_blank" rel="noopener noreferrer" style="text-decoration:none">Launch TunCam ↗</a></div><div class="grid g2">'+d[3].map(function(c,i){return '<div class="rv card" style="transition-delay:'+(i%2)*80+'ms"><span class="chip">0'+(i+1)+'</span><h3 style="margin:10px 0 8px">'+c[0]+'</h3><p style="margin:0">'+c[1]+'</p></div>'}).join('')+'</div><div style="margin-top:42px"><span class="chip">TunCam</span><h2 style="margin:10px 0 6px">Fixed Dataset Capturer &amp; Annotator</h2><p class="lead" style="margin:0">Standardized chamber capture and expert annotation interface at <a href="https://tuncam.vercel.app/" target="_blank" rel="noopener noreferrer">tuncam.vercel.app</a>.</p>'+gal([1,2,3,4,5].map(function(n){return '/docu/tuncam/tuncam-'+n+'.png'}))+'</div><div style="margin-top:42px"><span class="chip">Data Collection</span><h2 style="margin:10px 0 6px">Port &amp; Chamber Image Acquisition</h2><p class="lead" style="margin:0">On-site yellowfin tuna Sashibo Core and Tail-Cut sample collection.</p>'+gal([1,2,3,4,5,6].map(function(n){return '/docu/data-collection/dc-'+n+'.png'}))+'</div><div style="margin-top:42px"><span class="chip">Consultations</span><h2 style="margin:10px 0 6px">Expert Grader Consultations</h2><p class="lead" style="margin:0">Field validation and grading criteria alignment with <b>PFDA — Ma’am Borja</b> and <b>PAG-ASA Bangkerohan — Boss Jerry</b>.</p>'+gal([1,2,3].map(function(n){return '/docu/consultations/consult-'+n+'.png'}))+'</div></div></section>'+endcta()},
+docs:function(){var lb="var o=document.createElement('div');o.style.cssText='position:fixed;inset:0;z-index:9999;background:rgba(4,15,41,.9);display:grid;place-items:center;padding:24px;cursor:zoom-out';o.innerHTML='<img src=\"'+this.dataset.src+'\" style=\"max-width:94vw;max-height:90vh;border-radius:18px;box-shadow:0 24px 70px rgba(0,0,0,.6)\">';o.onclick=function(){o.remove()};document.body.appendChild(o)";
+var tc=[['01 Capture Rig','/docu/tuncam/tuncam-1.png'],['02 Live Framing','/docu/tuncam/tuncam-2.png'],['03 Annotator View','/docu/tuncam/tuncam-3.png'],['04 Grade Labelling','/docu/tuncam/tuncam-4.png'],['05 Dataset Export','/docu/tuncam/tuncam-5.png']];
+var dc=[['Chamber Lighting Setup','/docu/data-collection/dc-1.png',1],['Sashibo Core Framing','/docu/data-collection/dc-2.png',0],['Tail-Cut Acquisition','/docu/data-collection/dc-3.png',0],['Port Bench Workflow','/docu/data-collection/dc-4.png',0],['Sample Preparation','/docu/data-collection/dc-5.png',0],['Dataset Verification','/docu/data-collection/dc-6.png',1]];
+var cs=[['PFDA Consultation · Ma’am Borja','/docu/consultations/consult-1.png'],['PAG-ASA Bangkerohan · Boss Jerry','/docu/consultations/consult-2.png'],['Field Criteria Alignment','/docu/consultations/consult-3.png']];
+return '<header class="docp-hero"><div class="docp-gridbg"></div><div class="wrap" style="position:relative">'
++'<div class="docp-meta"><div><b>TunaEye Portfolio</b>Field &amp; Dataset Documentation</div><div><b>Capture &amp; Labelling</b>TunCam Fixed Rig + Annotator</div><div><b>Port Consultations</b>PFDA &amp; PAG-ASA Bangkerohan</div><div><b>Location</b>General Santos City</div></div>'
++'<div style="margin-top:34px;max-width:860px"><span class="chip" style="background:rgba(255,255,255,.12);color:#cfe0ff;border-color:rgba(255,255,255,.22)">Documentation &amp; Field Portfolio</span><h1 style="margin:14px 0 12px;font-size:clamp(40px,6vw,72px);line-height:1.02;letter-spacing:-.04em;color:#fff">Built in the port. <span class="serif" style="font-weight:400;color:#8cc0ff">Validated by experts.</span></h1><p style="margin:0;font-size:17px;line-height:1.6;color:rgba(255,255,255,.78);max-width:680px">Every model weight in TunaEye comes from standardized chamber photography, human-annotated TunCam datasets, and direct consultations with veteran yellowfin tuna graders.</p></div>'
++'<div class="docp-tl"><div><span>01 · Tooling</span><strong>TunCam Capturer</strong><p>Fixed-mount capture &amp; labeller</p></div><div><span>02 · Acquisition</span><strong>Port Data Collection</strong><p>6-stage Sashibo &amp; Tail-Cut shoots</p></div><div><span>03 · Consultation</span><strong>Expert Alignment</strong><p>Ma’am Borja &amp; Boss Jerry</p></div><div><span>04 · Edge AI</span><strong>V2 Models on Pi 5</strong><p>Separate Core &amp; Tail-Cut inference</p></div></div>'
++'</div></header>'
++'<section style="padding:56px 24px"><div class="wrap">'
++'<div class="docp-stage"><div style="display:flex;align-items:flex-end;justify-content:space-between;gap:18px;flex-wrap:wrap"><div><span class="chip" style="background:rgba(59,139,255,.22);color:#a6cbff;border-color:rgba(125,183,251,.35)">Dataset Tooling Showcase</span><h2 style="margin:10px 0 6px;font-size:clamp(28px,3.6vw,42px);color:#fff">TunCam — Fixed Capturer <span class="serif" style="font-weight:400;color:#8cc0ff">&amp; Annotator</span></h2><p style="margin:0;color:rgba(255,255,255,.74);max-width:640px">Hosted at <b>tuncam.vercel.app</b> — used to lock camera framing inside our 5000K CRI 98+ chamber and label Sashibo Core &amp; Tail-Cut samples with human annotators.</p></div><a class="pill" href="https://tuncam.vercel.app/" target="_blank" rel="noopener noreferrer" style="text-decoration:none">Launch TunCam ↗</a></div>'
++'<div class="docp-fan">'+tc.map(function(x){return '<img src="'+x[1]+'" alt="'+x[0]+'" data-src="'+x[1]+'" onclick="'+lb+'">'}).join('')+'</div>'
++'<div class="docp-strip">'+tc.map(function(x){return '<div class="docp-shot" data-src="'+x[1]+'" onclick="'+lb+'"><img src="'+x[1]+'" loading="lazy" alt="'+x[0]+'"><span>'+x[0]+'</span></div>'}).join('')+'</div></div>'
++'<div style="margin-top:64px"><span class="chip">02 · Field Acquisition</span><h2 style="margin:10px 0 6px;font-size:clamp(28px,3.5vw,40px)">Port &amp; Chamber <span class="serif">Data Collection</span></h2><p class="lead" style="margin:0;max-width:680px">All 6 field acquisition captures documenting standardized lighting, Sashibo Core extraction, and Tail-Cut framing.</p>'
++'<div class="docp-bento">'+dc.map(function(x){return '<div class="docp-bcard'+(x[2]?' wide':'')+'" data-src="'+x[1]+'" onclick="'+lb+'"><img src="'+x[1]+'" loading="lazy" alt="'+x[0]+'"><span class="docp-bcap">'+x[0]+'</span></div>'}).join('')+'</div></div>'
++'<div style="margin-top:64px;padding:36px;border-radius:28px;background:linear-gradient(160deg,#f3f7ff,#e9f1ff);border:1px solid #d7e4fb"><div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap"><div><span class="chip">03 · Industry Validation</span><h2 style="margin:10px 0 6px;font-size:clamp(28px,3.5vw,40px)">Expert Grader <span class="serif">Consultations</span></h2><p class="lead" style="margin:0;max-width:720px">Criteria calibration, 80% confidence review thresholds, and provisional Sashibo-only workflow review with <b>PFDA — Ma’am Borja</b> and <b>PAG-ASA Bangkerohan — Boss Jerry</b>.</p></div><div style="display:flex;gap:8px;flex-wrap:wrap"><span class="chip">PFDA · Ma’am Borja</span><span class="chip">PAG-ASA Bangkerohan · Boss Jerry</span></div></div>'
++'<div class="docp-bento" style="margin-top:22px">'+cs.map(function(x){return '<div class="docp-bcard" data-src="'+x[1]+'" onclick="'+lb+'"><img src="'+x[1]+'" loading="lazy" alt="'+x[0]+'"><span class="docp-bcap">'+x[0]+'</span></div>'}).join('')+'</div></div>'
++'</div></section>'+endcta()},
 terms:function(){return legal('terms',['auth','human','integ'])},
 privacy:function(){return legal('privacy',['pdata','pacc','pimg'],flowRow([['cam','Photo captured','At the station'],['doc','Linked to IDs','Station and fish ID only'],['lock','Stored securely','Cloud backups'],['user','Authorized staff','Defined retention']]))},
 faq:function(){var d=IN.faq;return ihead(d[0],d[1],d[2])+'<section><div class="wrap" style="max-width:780px">'+faqs(d[3],1)+'</div></section>'+endcta()},
@@ -1650,6 +1698,38 @@ html,body{overscroll-behavior:none;-webkit-user-select:none;user-select:none;-we
 .pb .tot{align-items:baseline;padding:2px 0 0;font-size:13px}.pb .tot b{font:800 22px Inter,system-ui,sans-serif;letter-spacing:-.03em}
 .pb .rbar{margin:12px 0 4px}
 .pb .rty{margin-top:6px;text-align:center;font-size:10.5px;color:#8a867d}
+/* Portfolio Documentation */
+.docp-hero{position:relative;overflow:hidden;padding:128px 24px 64px;color:#fff;background:radial-gradient(900px 520px at 85% 0%,rgba(59,139,255,.36),transparent 62%),radial-gradient(640px 420px at 10% 100%,rgba(52,211,153,.16),transparent 60%),linear-gradient(160deg,#061436 0%,#0b2870 54%,#040f29 100%)}
+.docp-gridbg{position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,.06) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.06) 1px,transparent 1px);background-size:96px 96px;pointer-events:none}
+.docp-meta{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;padding-bottom:28px;border-bottom:1px solid rgba(255,255,255,.14);font-size:12px;color:rgba(255,255,255,.72);position:relative}
+.docp-meta b{display:block;color:#fff;font-size:13px;margin-bottom:2px}
+.docp-tl{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-top:34px;padding-top:22px;border-top:1px solid rgba(255,255,255,.22);position:relative}
+.docp-tl div{position:relative;padding-top:14px}
+.docp-tl div:before{content:"";position:absolute;top:-27px;left:0;width:10px;height:10px;border-radius:50%;background:#34d399;box-shadow:0 0 0 4px rgba(52,211,153,.24)}
+.docp-tl span{display:block;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#7db7fb}
+.docp-tl strong{display:block;font-size:15px;color:#fff;margin-top:4px}
+.docp-tl p{margin:4px 0 0;font-size:12.5px;color:rgba(255,255,255,.68)}
+.docp-stage{position:relative;overflow:hidden;border-radius:30px;padding:38px 34px;color:#fff;background:radial-gradient(640px 360px at 80% 20%,rgba(59,139,255,.32),transparent 65%),linear-gradient(155deg,#071636,#040e24);border:1px solid rgba(125,183,251,.22);box-shadow:0 28px 70px -24px rgba(4,15,41,.65)}
+.docp-fan{display:flex;justify-content:center;align-items:center;gap:0;margin:28px 0 18px;padding:12px 0;min-height:240px}
+.docp-fan img{width:240px;aspect-ratio:16/10;object-fit:cover;border-radius:16px;border:2px solid rgba(255,255,255,.26);box-shadow:0 22px 44px -14px rgba(0,0,0,.65);transition:transform .3s ease,z-index .1s;cursor:zoom-in;margin-left:-44px;background:#091a42}
+.docp-fan img:first-child{margin-left:0;transform:rotate(-7deg) translateY(10px)}
+.docp-fan img:nth-child(2){transform:rotate(-3.5deg) translateY(3px)}
+.docp-fan img:nth-child(3){transform:translateY(-4px) scale(1.06);z-index:3;border-color:#7db7fb}
+.docp-fan img:nth-child(4){transform:rotate(3.5deg) translateY(3px)}
+.docp-fan img:nth-child(5){transform:rotate(7deg) translateY(10px)}
+.docp-fan img:hover{transform:translateY(-12px) scale(1.1)!important;z-index:10;border-color:#fff}
+.docp-strip{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;margin-top:16px}
+.docp-shot{position:relative;border-radius:16px;overflow:hidden;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);cursor:zoom-in;transition:transform .2s ease,border-color .2s ease}
+.docp-shot:hover{transform:translateY(-3px);border-color:#7db7fb}
+.docp-shot img{width:100%;aspect-ratio:16/10;object-fit:cover;display:block}
+.docp-shot span{display:block;padding:8px 10px;font-size:11.5px;font-weight:700;color:rgba(255,255,255,.86)}
+.docp-bento{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-top:20px}
+.docp-bcard{position:relative;border-radius:22px;overflow:hidden;background:#fff;border:1px solid #e3eaf8;box-shadow:0 12px 32px -18px rgba(18,59,112,.22);cursor:zoom-in;transition:transform .22s ease}
+.docp-bcard:hover{transform:translateY(-4px)}
+.docp-bcard.wide{grid-column:span 2}
+.docp-bcard img{width:100%;height:100%;min-height:220px;max-height:310px;object-fit:cover;display:block}
+.docp-bcap{position:absolute;left:14px;bottom:14px;padding:6px 12px;border-radius:999px;background:rgba(4,15,41,.78);color:#fff;font-size:12px;font-weight:700;backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.16)}
+@media(max-width:900px){.docp-meta,.docp-tl{grid-template-columns:1fr 1fr}.docp-strip{grid-template-columns:repeat(2,minmax(0,1fr))}.docp-bento{grid-template-columns:1fr}.docp-bcard.wide{grid-column:span 1}.docp-fan{display:none}}
 </style><link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet"></head><body><div id="stage"></div><div id="rot" role="alert"><svg class="rotic" width="96" height="96" viewBox="0 0 24 24" fill="none" stroke="#0b1630" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="3"/><path d="M11 18.5h2"/></svg>Rotate your tablet</div>
 <script>
 const $=s=>document.querySelector(s),st=$('#stage');
