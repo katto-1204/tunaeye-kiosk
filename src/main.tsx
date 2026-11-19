@@ -1,6 +1,8 @@
 import { launchExactUI } from './exact-ui'
 import { restoreSqliteRecords } from './gradingRecords'
 import { showLoadingDial } from './exact-loading'
+import { registerPwa } from './pwa'
+registerPwa()
 void showLoadingDial('Opening TunaEye', restoreSqliteRecords())
   .then(() => launchExactUI(false))
   .catch(error => {

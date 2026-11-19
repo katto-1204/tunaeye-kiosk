@@ -20,7 +20,10 @@ self.addEventListener('install', event => {
     const html = await response.clone().text()
     const bundles = [...html.matchAll(/(?:src|href)="([^"]+\.(?:js|css))"/g)].map(match => match[1])
     if (!bundles.some(path => path.startsWith('/assets/'))) throw Error('Offline caching requires a production build.')
-    await cache.addAll([...APP_SHELL.filter(path => path !== '/'), ...bundles])
+    const core = ['/manifest.webmanifest', '/tunaeye-logo.svg', '/tunaeye-192.png', '/tunaeye-512.png', ...bundles]
+    await cache.addAll(core)
+    const optional = APP_SHELL.filter(path => path !== '/' && !core.includes(path))
+    await Promise.allSettled(optional.map(path => cache.add(path)))
     await cache.put('/', response)
     await self.skipWaiting()
   })())
