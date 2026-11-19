@@ -1,10 +1,26 @@
 import { checkPiHealth, capturePiImage, getPiSettings } from './piClient'
 import { createId } from './id'
 
-type Row = { key: string; label: string; state: 'checking' | 'ready' | 'error'; detail: string }
+type Row = { key: string; label: string; sub: string; state: 'checking' | 'ready' | 'warn' | 'error'; detail: string }
 const active = new WeakMap<Window, Promise<boolean>>()
 const esc = (value: string) => value.replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]!))
 const message = (error: unknown) => error instanceof Error ? error.message : 'Check failed. Retry after checking the station.'
+
+const ROW_SVGS: Record<string, string> = {
+  network: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><circle cx="12" cy="20" r="1.3" fill="currentColor"/></svg>`,
+  server: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="7" rx="2"/><rect x="2" y="14" width="20" height="7" rx="2"/><circle cx="6" cy="6.5" r="1" fill="currentColor"/><circle cx="6" cy="17.5" r="1" fill="currentColor"/><path d="M11 6.5h7M11 17.5h7"/></svg>`,
+  camera: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3.5"/></svg>`,
+  sashibocore: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="8" rx="4"/><path d="M7 12h10" stroke-width="2.4"/></svg>`,
+  tailcut: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="12" rx="9" ry="7"/><ellipse cx="12" cy="12" rx="4.5" ry="3.2" stroke-dasharray="2.5 2"/><circle cx="12" cy="12" r="1.4" fill="currentColor"/></svg>`,
+  storage: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.66 3.58 3 8 3s8-1.34 8-3V5"/><path d="M4 12c0 1.66 3.58 3 8 3s8-1.34 8-3"/></svg>`
+}
+
+const STATE_BADGE_SVG: Record<Row['state'], string> = {
+  checking: `<svg class="lr-spin" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>`,
+  ready: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`,
+  warn: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4"/><path d="M12 17h.01"/></svg>`,
+  error: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`
+}
 
 async function storageCheck() {
   const probe = `tunaeye-check-${createId()}`
@@ -45,14 +61,113 @@ export function showLiveReadiness(w: Window): Promise<boolean> {
   const promise = new Promise<boolean>(resolve => {
     const d = w.document, previousFocus = d.activeElement as HTMLElement | null, overlay = d.createElement('div')
     overlay.className = 'ovl'; overlay.id = 'live-readiness'
-    overlay.innerHTML = `<style>#live-readiness .sheet{width:min(580px,94%);max-height:92%;overflow:auto;padding:28px;border-radius:24px;background:#fff;color:#182842;font-family:Inter,system-ui,sans-serif}#live-readiness h2{font-size:27px;margin:0 0 8px}#live-readiness p{font-size:14px;color:#71809a;margin:0 0 18px}#live-readiness ul{list-style:none;padding:0;margin:0}#live-readiness li{padding:12px 0;border-top:1px solid #e9eef7;display:grid;grid-template-columns:28px 1fr;gap:8px;font-size:14px}#live-readiness small{display:block;font-size:12px;font-weight:400;color:#71809a;margin-top:4px;overflow-wrap:anywhere}#live-readiness .lr-dot{width:23px;height:23px;border-radius:50%;display:grid;place-items:center;background:#edf3ff;color:#245fee}#live-readiness .lr-error .lr-dot{background:#fff0eb;color:#a33d29}#live-readiness .lr-ready .lr-dot{background:#eaf8f0;color:#17804c}#live-readiness .lr-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:22px;flex-wrap:wrap}#live-readiness button{min-height:44px;padding:10px 20px;border-radius:999px;font:600 14px Inter,system-ui,sans-serif;background:#edf3ff;color:#245fee;border:1px solid #dce6f6}#live-readiness button.lr-primary{background:#245fee;color:#fff;border-color:#245fee}#live-readiness button:disabled{opacity:.45;cursor:default}#live-readiness button:focus-visible{outline:3px solid #86adff;outline-offset:3px}</style><section class="sheet" role="dialog" aria-modal="true" aria-labelledby="lr-title"><h2 id="lr-title">Ready for live grading?</h2><p>Check the local Pi, camera, models and saved evidence before starting. Internet access is not required.</p><ul aria-live="polite"></ul><div class="lr-actions"><button type="button" data-lr="cancel">Cancel</button><button type="button" data-lr="retry">Retry checks</button><button type="button" class="lr-primary" data-lr="start" disabled>Start live grading</button></div></section>`
-    const rows: Row[] = [['network', 'Pi network'], ['server', 'Flask inference server'], ['camera', 'Camera snapshot'], ['sashibocore', 'Sashibo Core model'], ['tailcut', 'Tail-Cut model'], ['storage', 'Local storage & SQLite']].map(([key, label]) => ({ key, label, state: 'checking', detail: 'Checking…' }))
-    const list = overlay.querySelector('ul')!, start = overlay.querySelector<HTMLButtonElement>('[data-lr=start]')!, retry = overlay.querySelector<HTMLButtonElement>('[data-lr=retry]')!
+    overlay.innerHTML = `<style>
+      @keyframes lrSpin{to{transform:rotate(360deg)}}
+      #live-readiness .sheet{width:min(680px,95%);max-height:92%;overflow:auto;padding:22px 24px 20px;border-radius:26px;background:linear-gradient(180deg,#ffffff 0%,#f7faff 100%);color:#0f172a;font-family:Inter,system-ui,sans-serif;box-shadow:0 28px 70px -18px rgba(10,25,60,.38),0 0 0 1px rgba(219,231,249,.9)}
+      #live-readiness .lr-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:14px}
+      #live-readiness .lr-brand{display:flex;align-items:center;gap:13px}
+      #live-readiness .lr-hero-ic{width:46px;height:46px;border-radius:14px;background:linear-gradient(135deg,#2563eb 0%,#1d4ed8 100%);color:#fff;display:grid;place-items:center;box-shadow:0 10px 22px -8px rgba(37,99,235,.55);flex-shrink:0}
+      #live-readiness h2{font-size:22px;font-weight:800;letter-spacing:-.025em;margin:0 0 3px;color:#0f172a}
+      #live-readiness .lr-sub{font-size:12.5px;color:#64748b;margin:0;line-height:1.4}
+      #live-readiness .lr-pill{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;font-size:11.5px;font-weight:700;letter-spacing:.02em;white-space:nowrap;border:1px solid #dbe7f9;background:#eff6ff;color:#1d4ed8}
+      #live-readiness .lr-pill.ok{background:#ecfdf5;border-color:#a7f3d0;color:#047857}
+      #live-readiness .lr-pill.err{background:#fef2f2;border-color:#fecaca;color:#b91c1c}
+      #live-readiness ul{list-style:none;padding:0;margin:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+      @media (max-width:560px){#live-readiness ul{grid-template-columns:1fr}}
+      #live-readiness li{padding:11px 13px;border-radius:16px;border:1.5px solid #e2e8f0;background:#fff;display:grid;grid-template-columns:38px 1fr auto;align-items:center;gap:11px;transition:border-color .18s,background .18s,box-shadow .18s}
+      #live-readiness li.lr-ready{border-color:#bbf7d0;background:linear-gradient(135deg,#ffffff 0%,#f0fdf4 100%)}
+      #live-readiness li.lr-warn{border-color:#fde68a;background:linear-gradient(135deg,#ffffff 0%,#fffbeb 100%)}
+      #live-readiness li.lr-error{border-color:#fecaca;background:linear-gradient(135deg,#ffffff 0%,#fef2f2 100%)}
+      #live-readiness .lr-ic{width:38px;height:38px;border-radius:11px;display:grid;place-items:center;background:#eff6ff;color:#2563eb}
+      #live-readiness .lr-ready .lr-ic{background:#dcfce7;color:#15803d}
+      #live-readiness .lr-warn .lr-ic{background:#fef3c7;color:#b45309}
+      #live-readiness .lr-error .lr-ic{background:#fee2e2;color:#dc2626}
+      #live-readiness .lr-body{min-width:0}
+      #live-readiness .lr-title-row{display:flex;align-items:center;gap:6px}
+      #live-readiness .lr-body b{font-size:13.5px;font-weight:700;color:#0f172a;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      #live-readiness .lr-tag{font-size:10px;font-weight:700;color:#64748b;background:#f1f5f9;padding:1.5px 6px;border-radius:999px;text-transform:uppercase;letter-spacing:.04em}
+      #live-readiness small{display:block;font-size:11.5px;font-weight:500;color:#64748b;margin-top:2px;line-height:1.35;overflow-wrap:anywhere}
+      #live-readiness .lr-ready small{color:#166534}
+      #live-readiness .lr-warn small{color:#92400e}
+      #live-readiness .lr-error small{color:#b91c1c}
+      #live-readiness .lr-dot{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;background:#eff6ff;color:#2563eb;flex-shrink:0}
+      #live-readiness .lr-ready .lr-dot{background:#16a34a;color:#fff}
+      #live-readiness .lr-warn .lr-dot{background:#f59e0b;color:#fff}
+      #live-readiness .lr-error .lr-dot{background:#dc2626;color:#fff}
+      #live-readiness .lr-spin{animation:lrSpin .85s linear infinite}
+      #live-readiness .lr-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:16px;padding-top:14px;border-top:1px solid #e5edf8;flex-wrap:wrap}
+      #live-readiness .lr-note{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;color:#64748b}
+      #live-readiness .lr-actions{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-left:auto}
+      #live-readiness button{min-height:42px;padding:0 18px;border-radius:999px;font:600 13.5px Inter,system-ui,sans-serif;background:#f1f5f9;color:#334155;border:1px solid #cbd5e1;cursor:pointer;display:inline-flex;align-items:center;gap:7px;transition:transform .12s,background .15s}
+      #live-readiness button[data-lr=retry]{background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe}
+      #live-readiness button.lr-primary{background:linear-gradient(135deg,#2563eb 0%,#1d4ed8 100%);color:#fff;border-color:#1d4ed8;box-shadow:0 10px 22px -8px rgba(37,99,235,.65);padding:0 22px;font-weight:700}
+      #live-readiness button:disabled{opacity:.45;cursor:default;box-shadow:none}
+      #live-readiness button:focus-visible{outline:3px solid #86adff;outline-offset:2px}
+    </style>
+    <section class="sheet" role="dialog" aria-modal="true" aria-labelledby="lr-title">
+      <header class="lr-head">
+        <div class="lr-brand">
+          <div class="lr-hero-ic" aria-hidden="true">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+          </div>
+          <div>
+            <h2 id="lr-title">Ready for live grading?</h2>
+            <p class="lr-sub">Station hardware, V2 ONNX models &amp; offline evidence storage pre-flight check.</p>
+          </div>
+        </div>
+        <span class="lr-pill" id="lr-summary-pill">Checking station…</span>
+      </header>
+      <ul aria-live="polite"></ul>
+      <footer class="lr-foot">
+        <span class="lr-note">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          100% Offline-first · Internet not required
+        </span>
+        <div class="lr-actions">
+          <button type="button" data-lr="cancel">Cancel</button>
+          <button type="button" data-lr="retry">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
+            Retry checks
+          </button>
+          <button type="button" class="lr-primary" data-lr="start" disabled>
+            Start live grading
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+          </button>
+        </div>
+      </footer>
+    </section>`
+    const rows: Row[] = [
+      ['network', 'Pi network', 'Hotspot'],
+      ['server', 'Flask inference server', ':8080'],
+      ['camera', 'Camera snapshot', 'Optical'],
+      ['sashibocore', 'Sashibo Core model', 'V2 ONNX'],
+      ['tailcut', 'Tail-Cut model', 'V2 ONNX'],
+      ['storage', 'Local storage & SQLite', 'Offline DB'],
+    ].map(([key, label, sub]) => ({ key, label, sub, state: 'checking', detail: 'Checking…' }))
+    const list = overlay.querySelector('ul')!, start = overlay.querySelector<HTMLButtonElement>('[data-lr=start]')!, retry = overlay.querySelector<HTMLButtonElement>('[data-lr=retry]')!, summaryPill = overlay.querySelector<HTMLElement>('#lr-summary-pill')!
     let closed = false, running = false
     const render = () => {
       if (closed) return
-      list.innerHTML = rows.map(row => `<li class="lr-${row.state}" data-live-check="${row.key}"><span class="lr-dot" aria-hidden="true">${row.state === 'ready' ? '✓' : row.state === 'error' ? '!' : '…'}</span><div><b>${row.label}</b><small>${esc(row.detail)}</small></div></li>`).join('')
+      list.innerHTML = rows.map(row => `<li class="lr-${row.state}" data-live-check="${row.key}">
+        <div class="lr-ic" aria-hidden="true">${ROW_SVGS[row.key] || ''}</div>
+        <div class="lr-body">
+          <div class="lr-title-row"><b>${row.label}</b><span class="lr-tag">${row.sub}</span></div>
+          <small>${esc(row.detail)}</small>
+        </div>
+        <span class="lr-dot" aria-hidden="true">${STATE_BADGE_SVG[row.state]}</span>
+      </li>`).join('')
       const requiredReady = rows.filter(row => row.key !== 'camera').every(row => row.state === 'ready')
+      const readyCount = rows.filter(row => row.state === 'ready').length
+      if (running) {
+        summaryPill.className = 'lr-pill'
+        summaryPill.textContent = `Checking (${readyCount}/${rows.length})…`
+      } else if (requiredReady) {
+        summaryPill.className = 'lr-pill ok'
+        summaryPill.textContent = readyCount === rows.length ? `All ${rows.length}/${rows.length} systems ready` : `${readyCount}/${rows.length} ready · Camera fallback active`
+      } else {
+        summaryPill.className = 'lr-pill err'
+        summaryPill.textContent = `${readyCount}/${rows.length} ready · Check station`
+      }
       start.disabled = running || !requiredReady; retry.disabled = running
     }
     const set = (key: string, state: Row['state'], detail: string) => { Object.assign(rows.find(row => row.key === key)!, { state, detail }); render() }
@@ -90,8 +205,8 @@ export function showLiveReadiness(w: Window): Promise<boolean> {
             const dimensions = `${bitmap.width} × ${bitmap.height}`
             bitmap.close()
             set('camera', 'ready', `Received a decodable camera image (${dimensions}).`)
-          } catch (error) {
-            set('camera', 'error', `${message(error)} — No Pi USB camera signal. Continue with DroidCam URL (:4747), browser camera, or image upload.`)
+          } catch {
+            set('camera', 'warn', `No Pi USB camera signal — DroidCam (:4747), browser camera & Upload ready.`)
           }
         })(),
         (async () => { try { const detail = await storageCheck(); set('storage', 'ready', detail) } catch (error) { set('storage', 'error', message(error)) } })(),

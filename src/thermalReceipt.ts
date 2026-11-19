@@ -192,6 +192,22 @@ export function thermalReceiptHtml(receipt: ThermalReceipt): string {
 </style></head><body><main class="receipt"><h1>${escape(receipt.station || 'TUNAEYE KIOSK')}</h1><div class="center">Grading receipt</div>${receipt.demo ? '<div class="demo">DEMO — SIMULATED PREDICTION</div>' : ''}${receipt.provisional ? '<div class="demo">PROVISIONAL · TAIL-CUT NOT AVAILABLE</div>' : ''}<div class="divider"></div>${line('Order', receipt.order)}${line('Date', new Date(receipt.timestamp).toLocaleString('en-PH', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }))}${line('Grader', receipt.grader)}<div class="divider"></div>${sample('Sashibo core', receipt.core)}${tailLine}<div class="grade">GRADE ${escape(receipt.grade)}</div>${line('Weight', `${receipt.weight} kg`)}${line('Rate / kg', money(receipt.unitRatePerKg))}<div class="divider"></div>${line('TOTAL', money(receipt.total), true)}<div class="barcode">${receiptBarcode(receipt.order)}</div><div class="order">${escape(receipt.order)}</div><footer>Thank you · TunaEye</footer></main></body></html>`
 }
 
+export async function printTestReceipt(w: Window, stationName = 'TunaEye Kiosk', graderName = 'Station Test'): Promise<true> {
+  return printThermalReceipt(w, {
+    station: stationName,
+    order: 'TE_TEST',
+    grader: graderName || 'Station Test',
+    timestamp: Date.now(),
+    weight: 45,
+    grade: 'A',
+    unitRatePerKg: 420,
+    total: 18900,
+    core: { grade: 'A', confidence: 94.2 },
+    tailAvailable: false,
+    demo: true
+  })
+}
+
 export async function printThermalReceipt(w: Window, receipt: ThermalReceipt): Promise<true> {
   if (await tryDirectBluetoothPrint(receipt)) return true
   const d = w.document

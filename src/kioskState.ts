@@ -124,10 +124,20 @@ export function decisionFor(state: Session): FinalDecision {
     return { grade: null, confidence: sashibo.originalConfidence, source: 'expert-needed', title: 'Provisional — Manual override required', detail: `Sashibo Core confidence is very low (${sashibo.originalConfidence ?? '—'}%) and Tail-Cut is not available. An authorized grader must confirm the final grade.`, provisional: true, reviewFlagged: true, next: 'override' }
   }
   if (!tail) {
-    if (isAccepted(sashibo) && sashibo.originalGrade) {
+    if (isAccepted(sashibo) && sashibo.originalGrade && sashibo.originalGrade !== 'C') {
       return { grade: sashibo.originalGrade, confidence: sashibo.originalConfidence, source: 'sashibo', title: `Grade ${sashibo.originalGrade}`, detail: `Sashibo Core is Grade ${sashibo.originalGrade} (${sashibo.originalConfidence ?? '—'}%) above the ${ACCEPT_CONFIDENCE}% confidence threshold. Tail-Cut not required.`, next: 'print' }
     }
-    return { grade: sashibo.originalGrade, confidence: sashibo.originalConfidence, source: 'tail-needed', title: 'Is a Tail-Cut sample available?', detail: `Sashibo Core is Grade ${sashibo.originalGrade ?? '—'} (${sashibo.originalConfidence ?? '—'}%). Scan Tail-Cut if available, or continue provisionally.`, next: 'tail' }
+    const lowGradeC = sashibo.originalGrade === 'C' && isAccepted(sashibo)
+    return {
+      grade: sashibo.originalGrade,
+      confidence: sashibo.originalConfidence,
+      source: 'tail-needed',
+      title: 'Is a Tail-Cut sample available?',
+      detail: lowGradeC
+        ? `Sashibo Core is Grade C (${sashibo.originalConfidence ?? '—'}%). Scan Tail-Cut to verify or lift the grade, or continue provisionally.`
+        : `Sashibo Core confidence is below ${ACCEPT_CONFIDENCE}% (${sashibo.originalConfidence ?? '—'}%). Scan Tail-Cut if available, or continue provisionally.`,
+      next: 'tail'
+    }
   }
   if (tail.status === 'invalid') return { grade: null, confidence: tail.originalConfidence, source: 'retake', title: 'Retake the tail cut', detail: 'This tail-cut image cannot be graded. Capture it again inside the guide.', next: 'retake' }
   const avgConfidence = ((sashibo.originalConfidence ?? 0) + (tail.originalConfidence ?? 0)) / 2
