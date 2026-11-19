@@ -100,7 +100,7 @@ def main():
                 request = Request(args.pi.rstrip('/') + self.path, data=self.rfile.read(length) if length else None,
                                   headers={'Content-Type': self.headers.get('Content-Type', '')}, method=self.command)
                 try:
-                    response = urlopen(request, timeout=30)
+                    response = urlopen(request, timeout=None if urlparse(self.path).path == '/grade' else 30)
                 except HTTPError as error:
                     response = error
                 with response:

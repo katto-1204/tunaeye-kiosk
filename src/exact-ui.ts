@@ -121,6 +121,7 @@ const runtime = {
   },
   async camera(w: Kiosk) {
     const { toast } = api(w), settings = getPiSettings(), doc = w.document
+    doc.getElementById('te-captured-preview')?.remove()
     const current = doc.getElementById('vid')
     if (!current) return
     if (activeCameraSource === 'droidcam') {
@@ -174,8 +175,25 @@ const runtime = {
     const { S, go, toast } = api(w), sample: SampleType = key === 'tail' ? 'Tail cut' : 'Sashibo core'
     initialize(w); capturing = true
     const button = w.document.getElementById('sh') as HTMLButtonElement | null
-    if (button) { button.disabled = true; button.textContent = 'Grading…' }
+    if (button) { button.disabled = true; button.textContent = file ? 'Loading…' : 'Capturing…' }
+    const showCapturedPreview = (url: string, badgeText: string) => {
+      const vf = w.document.getElementById('vf')
+      if (!vf) return
+      let wrap = w.document.getElementById('te-captured-preview') as HTMLDivElement | null
+      if (!wrap) {
+        wrap = w.document.createElement('div')
+        wrap.id = 'te-captured-preview'
+        wrap.style.cssText = 'position:absolute;inset:0;z-index:4;background:#0b1220;display:flex;align-items:center;justify-content:center'
+        wrap.innerHTML = '<img alt="Captured sample preview" style="width:100%;height:100%;object-fit:contain"><span id="te-captured-badge" style="position:absolute;top:12px;left:12px;padding:6px 12px;border-radius:999px;background:rgba(15,23,42,.84);color:#fff;font:600 12px Inter,system-ui,sans-serif"></span>'
+        vf.append(wrap)
+      }
+      const img = wrap.querySelector('img')!
+      img.src = url
+      const badge = wrap.querySelector('#te-captured-badge')
+      if (badge) badge.textContent = badgeText
+    }
     let temporaryId: string | undefined
+    console.info('[TunaEye] capture start', { key, sample, activeCameraSource, hasFile: Boolean(file) })
     try {
       if (file && (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || !file.size || file.size > 10 * 1024 * 1024)) throw new Error('Choose a JPEG, PNG or WebP image up to 10 MB.')
       let blob: Blob
@@ -216,21 +234,31 @@ const runtime = {
           blob = await capturePiImage(sample)
         }
       }
-      const bitmap = await createImageBitmap(blob); bitmap.close()
+      try {
+        const bitmap = await createImageBitmap(blob)
+        console.info('[TunaEye] image decoded', { width: bitmap.width, height: bitmap.height, size: blob.size, type: blob.type })
+        bitmap.close()
+      } catch (decodeError) {
+        throw new PiIntegrationError('snapshot', 'Snapshot failed: captured image could not be decoded.', undefined, { cause: decodeError })
+      }
+      if (previews[key]) URL.revokeObjectURL(previews[key])
+      previews[key] = URL.createObjectURL(blob)
+      showCapturedPreview(previews[key], 'Captured · Grading…')
+      if (button) button.textContent = 'Grading…'
       const id = `${sessionId}-${key === 'tail' ? 2 : 1}`
       S.captureTime ??= Date.now()
       if (!isDemoMode()) {
         temporaryId = `${id}-pending-${createId()}`
         await saveCapturedEvidence({ id: temporaryId, sessionId, sample, fishId: 'Fish 1', capturedAt: S.captureTime, blob })
+        console.info('[TunaEye] evidence saved locally', { temporaryId, sample })
       }
       const result = await gradePiImage(blob, sample)
       if (result.outcome === 'invalid') {
+        showCapturedPreview(previews[key], 'Captured · Not gradable (INVALID)')
         if (temporaryId) await deleteCapturedEvidence(temporaryId)
         toast('This image cannot be graded. Retake or upload another image.', 1); return
       }
       if (temporaryId) { await promoteCapturedEvidence(temporaryId, id); temporaryId = undefined }
-      if (previews[key]) URL.revokeObjectURL(previews[key])
-      previews[key] = URL.createObjectURL(blob)
       session = { ...session, fishWeights: { 'Fish 1': S.w }, selectedSamples: key === 'tail' ? ['Sashibo core', 'Tail cut'] : ['Sashibo core'], currentSampleIndex: key === 'tail' ? 1 : 0 }
       session = reducer(session, { type: 'finishAnalysis', outcome: result.outcome, grade: result.grade, confidence: result.confidence, rawConfidence: result.rawConfidence, inferenceId: result.id, captureId: result.captureId, scores: result.scores, imageType: result.imageType, modelSource: result.modelSource })
       S.img = { ...(S.img ?? {}), [key]: previews[key] }; S[key] = result.confidence
@@ -243,12 +271,11 @@ const runtime = {
         const d = w.document
         d.getElementById('tail-avail-modal')?.remove()
         const overlay = d.createElement('div'); overlay.className = 'ovl'; overlay.id = 'tail-avail-modal'
-        const below = result.confidence !== null && result.confidence < ACCEPT_CONFIDENCE
-        const chipBg = below ? '#fff4db' : '#eaf8f0', chipFg = below ? '#925800' : '#17804c'
+        const chipBg = '#eaf8f0', chipFg = '#17804c'
         overlay.innerHTML = `<section class="sheet" role="dialog" aria-modal="true" aria-labelledby="ta-title" style="width:min(480px,94%);padding:28px;border-radius:26px;background:#fff;color:#182842;font-family:Inter,system-ui,sans-serif;box-shadow:0 24px 60px -16px rgba(11,26,58,.28)">
-          <div style="display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:999px;background:${chipBg};color:${chipFg};font-size:12px;font-weight:700;margin-bottom:14px">Sashibo Core · Grade ${result.grade ?? '—'} · ${result.confidence ?? '—'}%${below ? ` (Below ${ACCEPT_CONFIDENCE}%)` : ''}</div>
+          <div style="display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:999px;background:${chipBg};color:${chipFg};font-size:12px;font-weight:700;margin-bottom:14px">Sashibo Core · Grade ${result.grade ?? '—'} · ${result.confidence ?? '—'}%</div>
           <h2 id="ta-title" style="margin:0 0 8px;font-size:24px;letter-spacing:-.025em;line-height:1.2">Is a Tail-Cut sample available?</h2>
-          <p style="margin:0 0 22px;font-size:14px;line-height:1.5;color:#5b6b84">Scan a Tail-Cut sample if available. If not, this assessment will be marked <b>PROVISIONAL</b> and require authorized grader confirmation.</p>
+          <p style="margin:0 0 22px;font-size:14px;line-height:1.5;color:#5b6b84">Scan a Tail-Cut sample if available. If not, this assessment will be marked <b>PROVISIONAL</b> using the Sashibo Core grade.</p>
           <div style="display:grid;gap:10px">
             <button type="button" id="ta-yes" style="width:100%;height:50px;border-radius:999px;border:0;background:linear-gradient(135deg,#3b8bff,#1d5ef0);color:#fff;font:600 15px Inter,system-ui,sans-serif;cursor:pointer;box-shadow:0 10px 24px -10px rgba(33,89,232,.65)">Yes — Scan Tail-Cut</button>
             <button type="button" id="ta-no" style="width:100%;height:48px;border-radius:999px;border:1px solid #d7e2f4;background:#f5f8ff;color:#182842;font:600 14px Inter,system-ui,sans-serif;cursor:pointer">No — Continue without Tail-Cut</button>
@@ -272,10 +299,21 @@ const runtime = {
       go('final')
       if (saveMessage) toast(saveMessage)
     } catch (error) {
+      console.error('[TunaEye] capture/grade error', {
+        stage: error instanceof PiIntegrationError ? error.stage : 'unknown',
+        status: error instanceof PiIntegrationError ? error.status : undefined,
+        message: error instanceof Error ? error.message : String(error),
+      })
+      const badge = w.document.getElementById('te-captured-badge')
+      if (badge) badge.textContent = error instanceof PiIntegrationError && error.stage === 'snapshot' ? 'Capture failed' : 'Captured · Grading error'
       if (error instanceof PiIntegrationError && error.status === 422) {
         if (temporaryId) await deleteCapturedEvidence(temporaryId).catch(() => { })
         toast(error.message, 1)
-      } else toast(`${error instanceof Error ? error.message : 'Inference failed.'}${temporaryId ? ' Unvalidated capture remains saved locally; previous accepted evidence is unchanged.' : ''}`, 1)
+      } else if (error instanceof PiIntegrationError && error.stage === 'snapshot') {
+        toast(error.message, 1)
+      } else {
+        toast(`${error instanceof Error ? error.message : 'Inference failed.'}${temporaryId ? ' Captured image remains visible and saved locally; previous accepted evidence is unchanged.' : ''}`, 1)
+      }
     }
     finally { capturing = false; if (button?.isConnected) { button.disabled = false; button.textContent = 'Scan sample' } }
   },
@@ -513,14 +551,7 @@ const runtime = {
           if (bars[1] && tailRes?.originalGrade) { const lbl = bars[1].querySelector('.b5h span'); if (lbl) lbl.textContent = `Tail · Grade ${tailRes.originalGrade}` }
           const mixLabel = d.querySelector('.sp5 span'); if (mixLabel) mixLabel.textContent = tailRes ? 'Avg confidence' : 'Model confidence'
           if (decision.provisional && chip) { chip.className = 'v5c c-am'; chip.innerHTML = '<i></i>PROVISIONAL' }
-          if (decision.next === 'override') {
-            const prelim = preliminaryGrade()
-            d.querySelector('.v5h h1')!.textContent = decision.provisional ? 'Provisional — Confirmation required' : 'Manual review required'
-            button.textContent = decision.provisional ? 'Confirm / Set final grade' : 'Confirm / Set final grade'
-            button.onclick = () => runtime.override(w)
-            const gt = d.querySelector('.gt5'); if (gt) gt.textContent = `Grade ${prelim} (Review)`
-            const gs = d.querySelector('.gs5'); if (gs) gs.textContent = 'Confirm or override below'
-          } else button.onclick = () => { if (decision.next === 'print') api(w).go('receipt') }
+          button.onclick = () => { if (decision.next === 'print' || decision.grade) api(w).go('receipt') }
           d.querySelectorAll('.lg5').forEach(e => e.textContent = decision.detail)
           if (session.tailAvailability === 'not_available') {
             d.querySelectorAll('.ph5-f span').forEach(el => { if (el.textContent?.includes('Tail')) el.textContent = 'Tail-Cut: NOT AVAILABLE' })
@@ -692,10 +723,18 @@ const runtime = {
             }
           } catch { piOk = false }
           if (settings.snapshotUrl) {
+            const probeSnap = async (url: string) => {
+              const camRes = await fetch(url, { cache: 'no-store', credentials: settings.mode === 'hosted-gateway' ? 'include' : 'omit', signal: AbortSignal.timeout(2500) })
+              const ct = camRes.headers.get('content-type') ?? ''
+              return camRes.ok && (!ct || ct.startsWith('image/') || ct === 'application/octet-stream')
+            }
             try {
-              const camRes = await fetch(settings.snapshotUrl, { cache: 'no-store', credentials: settings.mode === 'hosted-gateway' ? 'include' : 'omit', signal: AbortSignal.timeout(2500) })
-              camOk = camRes.ok && (camRes.headers.get('content-type') ?? '').startsWith('image/')
-            } catch { camOk = false }
+              camOk = await probeSnap(settings.snapshotUrl)
+            } catch {
+              try {
+                camOk = settings.apiUrl ? await probeSnap(`${settings.apiUrl}/snapshot`) : false
+              } catch { camOk = false }
+            }
           }
         }
         const cloudOk = navigator.onLine && isSupabaseConfigured() ? await checkCloudConnection().catch(() => false) : false

@@ -13,7 +13,7 @@ export function meetsExperimentalPolicy(result: { status: string; originalConfid
   return (ranked[0] - ranked[1]) / scale >= .20
 }
 
-export function predictionOutcome(invalid: boolean, confidence: number, status: unknown): 'valid' | 'uncertain' | 'invalid' {
+export function predictionOutcome(invalid: boolean, _confidence: number, status: unknown): 'valid' | 'uncertain' | 'invalid' {
   if (invalid || (experimentalPolicy && status === 'invalid')) return 'invalid'
-  return experimentalPolicy ? status === 'accepted' ? 'valid' : 'uncertain' : confidence < 70 ? 'uncertain' : 'valid'
+  return 'valid'
 }
