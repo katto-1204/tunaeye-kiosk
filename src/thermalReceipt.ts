@@ -14,6 +14,155 @@ export interface ThermalReceipt {
   demo?: boolean
 }
 
+type BtCharacteristic = {
+  writeValue?: (data: BufferSource) => Promise<void>
+  writeValueWithoutResponse?: (data: BufferSource) => Promise<void>
+  properties?: { write?: boolean; writeWithoutResponse?: boolean }
+}
+type BtDevice = {
+  name?: string
+  gatt?: {
+    connected?: boolean
+    connect: () => Promise<{
+      getPrimaryServices: () => Promise<Array<{
+        getCharacteristics: () => Promise<BtCharacteristic[]>
+      }>>
+    }>
+  }
+}
+
+let cachedBtDevice: BtDevice | null = null
+let cachedBtChar: BtCharacteristic | null = null
+
+const COMMON_PRINTER_SERVICES = [
+  '000018f0-0000-1000-8000-00805f9b34fb',
+  '0000ff00-0000-1000-8000-00805f9b34fb',
+  '49535343-fe7d-4ae5-8fa9-9fafd205e455',
+  '0000ffe0-0000-1000-8000-00805f9b34fb',
+  'e7810a71-73ae-499d-8c15-faa9aef0c3f2'
+]
+
+export function getConnectedBtPrinterName(): string | null {
+  return cachedBtDevice?.gatt?.connected ? (cachedBtDevice.name || 'Bluetooth Printer') : null
+}
+
+async function resolveWritableChar(device: BtDevice): Promise<BtCharacteristic | null> {
+  if (!device.gatt) return null
+  const server = await device.gatt.connect()
+  const services = await server.getPrimaryServices()
+  for (const svc of services) {
+    const chars = await svc.getCharacteristics().catch(() => [])
+    const writable = chars.find(c => c.properties?.write || c.properties?.writeWithoutResponse)
+    if (writable) return writable
+  }
+  return null
+}
+
+export async function pairBluetoothPrinter(): Promise<string> {
+  const nav = navigator as unknown as { bluetooth?: { requestDevice: (opts: unknown) => Promise<BtDevice> } }
+  if (!nav.bluetooth?.requestDevice) {
+    throw new Error('Web Bluetooth requires HTTPS or chrome://flags/#unsafely-treat-insecure-origin-as-secure.')
+  }
+  const device = await nav.bluetooth.requestDevice({
+    acceptAllDevices: true,
+    optionalServices: COMMON_PRINTER_SERVICES
+  })
+  const writable = await resolveWritableChar(device)
+  if (!writable) throw new Error('Connected to Bluetooth device, but no ESC/POS print characteristic was found.')
+  cachedBtDevice = device
+  cachedBtChar = writable
+  return device.name || 'Bluetooth Thermal Printer'
+}
+
+function buildEscPosBytes(receipt: ThermalReceipt): Uint8Array {
+  const enc = new TextEncoder()
+  const money = (v: number | null) => v !== null && Number.isFinite(v) ? `PHP ${v.toFixed(2)}` : '-'
+  const padRow = (l: string, r: string) => {
+    const max = 32
+    const space = Math.max(1, max - l.length - r.length)
+    return `${l}${' '.repeat(space)}${r}\n`
+  }
+  const dateStr = new Date(receipt.timestamp).toLocaleString('en-PH', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+  const lines: number[] = [
+    0x1b, 0x40, // Initialize
+    0x1b, 0x61, 0x01, // Center
+    0x1b, 0x45, 0x01, // Bold ON
+    ...enc.encode(`${(receipt.station || 'TUNAEYE KIOSK').toUpperCase()}\n`),
+    0x1b, 0x45, 0x00,
+    ...enc.encode('Grading Receipt\n'),
+  ]
+  if (receipt.demo) lines.push(...enc.encode('[DEMO - SIMULATED]\n'))
+  if (receipt.provisional) lines.push(...enc.encode('[PROVISIONAL - NO TAIL-CUT]\n'))
+  lines.push(
+    ...enc.encode('--------------------------------\n'),
+    0x1b, 0x61, 0x00, // Left
+    ...enc.encode(padRow('Order:', receipt.order)),
+    ...enc.encode(padRow('Date:', dateStr)),
+    ...enc.encode(padRow('Grader:', receipt.grader || '-')),
+    ...enc.encode('--------------------------------\n'),
+  )
+  if (receipt.core) {
+    const cStr = `${receipt.core.grade}${receipt.core.confidence != null ? ` (${receipt.core.confidence.toFixed(1)}%)` : ''}`
+    lines.push(...enc.encode(padRow('Sashibo Core:', cStr)))
+  }
+  if (receipt.tail) {
+    const tStr = `${receipt.tail.grade}${receipt.tail.confidence != null ? ` (${receipt.tail.confidence.toFixed(1)}%)` : ''}`
+    lines.push(...enc.encode(padRow('Tail-Cut:', tStr)))
+  } else if (receipt.tailAvailable === false) {
+    lines.push(...enc.encode(padRow('Tail-Cut:', 'NOT AVAILABLE')))
+  }
+  lines.push(
+    0x1b, 0x61, 0x01, // Center
+    0x1b, 0x45, 0x01, // Bold ON
+    0x1d, 0x21, 0x11, // Double width & height
+    ...enc.encode(`\nGRADE ${receipt.grade}\n\n`),
+    0x1d, 0x21, 0x00, // Normal size
+    0x1b, 0x45, 0x00,
+    0x1b, 0x61, 0x00, // Left
+    ...enc.encode(padRow('Weight:', `${receipt.weight} kg`)),
+    ...enc.encode(padRow('Rate / kg:', money(receipt.unitRatePerKg))),
+    ...enc.encode('--------------------------------\n'),
+    0x1b, 0x45, 0x01,
+    ...enc.encode(padRow('TOTAL:', money(receipt.total))),
+    0x1b, 0x45, 0x00,
+    ...enc.encode('--------------------------------\n'),
+    0x1b, 0x61, 0x01,
+    ...enc.encode(`${receipt.order}\nThank you - TunaEye\n\n\n\n`),
+    0x1d, 0x56, 0x00 // Cut if supported
+  )
+  return new Uint8Array(lines)
+}
+
+async function tryDirectBluetoothPrint(receipt: ThermalReceipt): Promise<boolean> {
+  try {
+    if (!cachedBtDevice) {
+      const nav = navigator as unknown as { bluetooth?: { getDevices?: () => Promise<BtDevice[]> } }
+      if (nav.bluetooth?.getDevices) {
+        const known = await nav.bluetooth.getDevices()
+        if (known.length > 0) cachedBtDevice = known[0]
+      }
+    }
+    if (!cachedBtDevice) return false
+    if (!cachedBtDevice.gatt?.connected || !cachedBtChar) {
+      cachedBtChar = await resolveWritableChar(cachedBtDevice)
+    }
+    if (!cachedBtChar) return false
+    const bytes = buildEscPosBytes(receipt)
+    const chunkSize = 128
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      const slice = bytes.slice(i, i + chunkSize)
+      if (cachedBtChar.properties?.writeWithoutResponse && cachedBtChar.writeValueWithoutResponse) {
+        await cachedBtChar.writeValueWithoutResponse(slice)
+      } else if (cachedBtChar.writeValue) {
+        await cachedBtChar.writeValue(slice)
+      }
+    }
+    return true
+  } catch {
+    return false
+  }
+}
+
 const escape = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!))
 // Code 128 symbol widths, ISO/IEC 15417. The checksum and quiet zones are part of the printed barcode.
 const patterns = `212222 222122 222221 121223 121322 131222 122213 122312 132212 221213 221312 231212 112232 122132 122231 113222 123122 123221 223211 221132 221231 213212 223112 312131 311222 321122 321221 312212 322112 322211 212123 212321 232121 111323 131123 131321 112313 132113 132311 211313 231113 231311 112133 112331 132131 113123 113321 133121 313121 211331 231131 213113 213311 213131 311123 311321 331121 312113 312311 332111 314111 221411 431111 111224 111422 121124 121421 141122 141221 112214 112412 122114 122411 142112 142211 241211 221114 413111 241112 134111 111242 121142 121241 114212 124112 124211 411212 421112 421211 212141 214121 412121 111143 111341 131141 114113 114311 411113 411311 113141 114131 311141 411131 211412 211214 211232 2331112`.split(' ')
@@ -44,6 +193,7 @@ export function thermalReceiptHtml(receipt: ThermalReceipt): string {
 }
 
 export async function printThermalReceipt(w: Window, receipt: ThermalReceipt): Promise<true> {
+  if (await tryDirectBluetoothPrint(receipt)) return true
   const d = w.document
   d.querySelector('iframe[data-thermal-receipt]')?.remove()
   const frame = d.createElement('iframe')

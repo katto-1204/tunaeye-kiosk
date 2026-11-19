@@ -15,12 +15,13 @@ import { enhanceAdmin } from './exact-admin'
 import { showLiveReadiness } from './liveReadiness'
 import { verifyAdminPin, mountPinSettings } from './adminPin'
 import { registerPwa, requestPwaInstall } from './pwa'
-import { printThermalReceipt } from './thermalReceipt'
+import { printThermalReceipt, pairBluetoothPrinter, getConnectedBtPrinterName } from './thermalReceipt'
 
 type Kiosk = Window & { eval: (text: string) => any }
 let session: Session = { ...initialSession }
 let sessionId = createId(), order: number | null = null, capturing = false
 let tabletEntry = false
+let receiptSkipped = false
 const previews: Record<string, string> = {}
 let activeCameraSource = typeof localStorage !== 'undefined' ? (localStorage.getItem('tunaeye-camera-source') || 'pi') : 'pi'
 let droidcamUrl = typeof localStorage !== 'undefined' ? (localStorage.getItem('tunaeye-droidcam-url') || 'http://192.168.1.2:4747') : 'http://192.168.1.2:4747'
@@ -173,6 +174,7 @@ const runtime = {
   async capture(w: Kiosk, key: string, file?: File) {
     if (capturing) return
     const { S, go, toast } = api(w), sample: SampleType = key === 'tail' ? 'Tail cut' : 'Sashibo core'
+    if (Boolean(S.cfg?.demo) !== isDemoMode()) setKioskDemoMode(Boolean(S.cfg?.demo))
     initialize(w); capturing = true
     const button = w.document.getElementById('sh') as HTMLButtonElement | null
     if (button) { button.disabled = true; button.textContent = file ? 'Loading…' : 'Capturing…' }
@@ -199,6 +201,18 @@ const runtime = {
       let blob: Blob
       if (file) {
         blob = file
+      } else if (isDemoMode()) {
+        const inlineDataUrl = (() => { try { return w.eval(key === 'tail' ? 'IMG_TAIL' : 'IMG_CORE') as string } catch { return '' } })()
+        if (inlineDataUrl?.startsWith('data:image/')) {
+          const comma = inlineDataUrl.indexOf(',')
+          const mime = inlineDataUrl.slice(5, comma).split(';')[0] || 'image/jpeg'
+          const bin = atob(inlineDataUrl.slice(comma + 1))
+          const bytes = new Uint8Array(bin.length)
+          for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+          blob = new Blob([bytes], { type: mime })
+        } else {
+          blob = await capturePiImage(sample)
+        }
       } else if (activeCameraSource === 'droidcam') {
         const base = normalizeDroidcamUrl(droidcamUrl)
         try {
@@ -252,11 +266,34 @@ const runtime = {
         await saveCapturedEvidence({ id: temporaryId, sessionId, sample, fishId: 'Fish 1', capturedAt: S.captureTime, blob })
         console.info('[TunaEye] evidence saved locally', { temporaryId, sample })
       }
+      const resetCameraAfterInvalid = () => {
+        const d = w.document
+        d.getElementById('te-captured-preview')?.remove()
+        if (previews[key]) { URL.revokeObjectURL(previews[key]); delete previews[key] }
+        const fi = d.getElementById('fi') as HTMLInputElement | null
+        if (fi) fi.value = ''
+        if (!isDemoMode()) void runtime.camera(w)
+      }
+      const showInvalidSampleModal = (msg: string) => {
+        const d = w.document
+        resetCameraAfterInvalid()
+        d.getElementById('te-invalid-sample-modal')?.remove()
+        const ov = d.createElement('div'); ov.className = 'ovl'; ov.id = 'te-invalid-sample-modal'
+        ov.innerHTML = `<section class="sheet" role="alertdialog" aria-modal="true" aria-label="Invalid sample image" style="width:min(420px,92%);padding:24px;border-radius:24px;background:#fff;color:#182842;font-family:Inter,system-ui,sans-serif;text-align:center;box-shadow:0 24px 60px -16px rgba(11,26,58,.32)">
+          <div style="width:52px;height:52px;margin:0 auto 12px;border-radius:50%;background:#fef2f2;border:1px solid #fecaca;color:#dc2626;display:grid;place-items:center">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          </div>
+          <h2 style="margin:0 0 6px;font-size:20px;letter-spacing:-.02em">Not a valid ${sample}</h2>
+          <p style="margin:0;font-size:13.5px;line-height:1.5;color:#5b6b84">${msg}</p>
+        </section>`
+        ov.onclick = () => ov.remove()
+        ;(d.getElementById('stage') ?? d.body).append(ov)
+        w.setTimeout(() => { if (ov.isConnected) ov.remove() }, 2000)
+      }
       const result = await gradePiImage(blob, sample)
       if (result.outcome === 'invalid') {
-        showCapturedPreview(previews[key], 'Captured · Not gradable (INVALID)')
         if (temporaryId) await deleteCapturedEvidence(temporaryId)
-        toast('This image cannot be graded. Retake or upload another image.', 1); return
+        showInvalidSampleModal(`This image is not recognized as a valid ${sample}. Camera reset — please scan again.`); return
       }
       if (temporaryId) { await promoteCapturedEvidence(temporaryId, id); temporaryId = undefined }
       session = { ...session, fishWeights: { 'Fish 1': S.w }, selectedSamples: key === 'tail' ? ['Sashibo core', 'Tail cut'] : ['Sashibo core'], currentSampleIndex: key === 'tail' ? 1 : 0 }
@@ -266,19 +303,35 @@ const runtime = {
       let saveMessage: string | undefined
       if (!isDemoMode()) { persist(w); saveMessage = await sqliteSaveStatus() }
       const decision = decisionFor(session)
-      if (decision.next === 'retake') { toast(decision.detail, 1); return }
-      if (key === 'core') {
+      if (decision.next === 'retake') { showInvalidSampleModal(decision.detail); return }
+      const highConfidence = result.confidence !== null && result.confidence >= ACCEPT_CONFIDENCE && Boolean(result.grade)
+      if (key === 'core' && !highConfidence) {
         const d = w.document
         d.getElementById('tail-avail-modal')?.remove()
         const overlay = d.createElement('div'); overlay.className = 'ovl'; overlay.id = 'tail-avail-modal'
-        const chipBg = '#eaf8f0', chipFg = '#17804c'
-        overlay.innerHTML = `<section class="sheet" role="dialog" aria-modal="true" aria-labelledby="ta-title" style="width:min(480px,94%);padding:28px;border-radius:26px;background:#fff;color:#182842;font-family:Inter,system-ui,sans-serif;box-shadow:0 24px 60px -16px rgba(11,26,58,.28)">
-          <div style="display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:999px;background:${chipBg};color:${chipFg};font-size:12px;font-weight:700;margin-bottom:14px">Sashibo Core · Grade ${result.grade ?? '—'} · ${result.confidence ?? '—'}%</div>
-          <h2 id="ta-title" style="margin:0 0 8px;font-size:24px;letter-spacing:-.025em;line-height:1.2">Is a Tail-Cut sample available?</h2>
-          <p style="margin:0 0 22px;font-size:14px;line-height:1.5;color:#5b6b84">Scan a Tail-Cut sample if available. If not, this assessment will be marked <b>PROVISIONAL</b> using the Sashibo Core grade.</p>
-          <div style="display:grid;gap:10px">
-            <button type="button" id="ta-yes" style="width:100%;height:50px;border-radius:999px;border:0;background:linear-gradient(135deg,#3b8bff,#1d5ef0);color:#fff;font:600 15px Inter,system-ui,sans-serif;cursor:pointer;box-shadow:0 10px 24px -10px rgba(33,89,232,.65)">Yes — Scan Tail-Cut</button>
-            <button type="button" id="ta-no" style="width:100%;height:48px;border-radius:999px;border:1px solid #d7e2f4;background:#f5f8ff;color:#182842;font:600 14px Inter,system-ui,sans-serif;cursor:pointer">No — Continue without Tail-Cut</button>
+        const reasonBadge = `Confidence below ${ACCEPT_CONFIDENCE}% (${result.confidence ?? '—'}%)`
+        const chipBg = '#fff4db', chipFg = '#925800'
+        const sashiboSvg = `<svg width="64" height="44" viewBox="0 0 64 44" fill="none" aria-hidden="true"><rect x="2" y="10" width="60" height="24" rx="8" fill="#fff1f0" stroke="#f5c2c0" stroke-width="1.5"/><path d="M10 22C20 18 44 26 54 21" stroke="#dc2626" stroke-width="5" stroke-linecap="round"/><circle cx="14" cy="22" r="2.5" fill="#991b1b"/></svg>`
+        const tailSvg = `<svg width="64" height="44" viewBox="0 0 64 44" fill="none" aria-hidden="true"><rect x="2" y="4" width="60" height="36" rx="10" fill="#eef5ff" stroke="#bfd6ff" stroke-width="1.5"/><ellipse cx="32" cy="22" rx="18" ry="12" fill="#ef4444" stroke="#fca5a5" stroke-width="2"/><ellipse cx="32" cy="22" rx="10" ry="6" fill="#dc2626" stroke="#fecaca" stroke-width="1.2" stroke-dasharray="3 2"/><circle cx="32" cy="22" r="2.5" fill="#fff"/></svg>`
+        overlay.innerHTML = `<section class="sheet" role="dialog" aria-modal="true" aria-labelledby="ta-title" style="width:min(520px,95%);padding:24px;border-radius:26px;background:#fff;color:#182842;font-family:Inter,system-ui,sans-serif;box-shadow:0 24px 60px -16px rgba(11,26,58,.28)">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+            <span style="display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:999px;background:${chipBg};color:${chipFg};font-size:12px;font-weight:700">Sashibo Core · Grade ${result.grade ?? '—'} · ${result.confidence ?? '—'}%</span>
+            <span style="font-size:11.5px;font-weight:700;color:#b45309">${reasonBadge}</span>
+          </div>
+          <h2 id="ta-title" style="margin:0 0 14px;font-size:22px;letter-spacing:-.025em;line-height:1.2">Is a Tail-Cut sample available?</h2>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
+            <div style="padding:12px;border-radius:16px;background:#fff9f5;border:1px solid #fde2c8;display:flex;align-items:center;gap:10px">
+              ${sashiboSvg}
+              <div><div style="font-size:11px;font-weight:700;color:#9a3412;text-transform:uppercase">1. Sashibo Core</div><div style="font-size:13px;font-weight:800;color:#182842">Grade ${result.grade ?? '—'} (${result.confidence ?? '—'}%)</div><div style="font-size:11px;color:#64748b">Under ${ACCEPT_CONFIDENCE}%</div></div>
+            </div>
+            <div style="padding:12px;border-radius:16px;background:#f4f8ff;border:1px solid #d5e4ff;display:flex;align-items:center;gap:10px">
+              ${tailSvg}
+              <div><div style="font-size:11px;font-weight:700;color:#1d4ed8;text-transform:uppercase">2. Tail-Cut Face</div><div style="font-size:13px;font-weight:800;color:#182842">2nd Check</div><div style="font-size:11px;color:#64748b">Combines both</div></div>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <button type="button" id="ta-yes" style="width:100%;height:48px;border-radius:999px;border:0;background:linear-gradient(135deg,#3b8bff,#1d5ef0);color:#fff;font:600 14.5px Inter,system-ui,sans-serif;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;text-align:center;box-shadow:0 10px 24px -10px rgba(33,89,232,.65)">Scan Tail-Cut</button>
+            <button type="button" id="ta-no" style="width:100%;height:48px;border-radius:999px;border:1px solid #d7e2f4;background:#f5f8ff;color:#182842;font:600 14.5px Inter,system-ui,sans-serif;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;text-align:center">No Tail-Cut</button>
           </div>
         </section>`
           ; (d.getElementById('stage') ?? d.body).append(overlay)
@@ -308,7 +361,17 @@ const runtime = {
       if (badge) badge.textContent = error instanceof PiIntegrationError && error.stage === 'snapshot' ? 'Capture failed' : 'Captured · Grading error'
       if (error instanceof PiIntegrationError && error.status === 422) {
         if (temporaryId) await deleteCapturedEvidence(temporaryId).catch(() => { })
-        toast(error.message, 1)
+        const d = w.document
+        d.getElementById('te-captured-preview')?.remove()
+        if (previews[key]) { URL.revokeObjectURL(previews[key]); delete previews[key] }
+        const fi = d.getElementById('fi') as HTMLInputElement | null; if (fi) fi.value = ''
+        if (!isDemoMode()) void runtime.camera(w)
+        d.getElementById('te-invalid-sample-modal')?.remove()
+        const ov = d.createElement('div'); ov.className = 'ovl'; ov.id = 'te-invalid-sample-modal'
+        ov.innerHTML = `<section class="sheet" role="alertdialog" aria-modal="true" aria-label="Invalid sample image" style="width:min(420px,92%);padding:24px;border-radius:24px;background:#fff;color:#182842;font-family:Inter,system-ui,sans-serif;text-align:center;box-shadow:0 24px 60px -16px rgba(11,26,58,.32)"><div style="width:52px;height:52px;margin:0 auto 12px;border-radius:50%;background:#fef2f2;border:1px solid #fecaca;color:#dc2626;display:grid;place-items:center"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div><h2 style="margin:0 0 6px;font-size:20px;letter-spacing:-.02em">Not a valid ${sample}</h2><p style="margin:0;font-size:13.5px;line-height:1.5;color:#5b6b84">${error.message}</p></section>`
+        ov.onclick = () => ov.remove()
+        ;(d.getElementById('stage') ?? d.body).append(ov)
+        w.setTimeout(() => { if (ov.isConnected) ov.remove() }, 2000)
       } else if (error instanceof PiIntegrationError && error.stage === 'snapshot') {
         toast(error.message, 1)
       } else {
@@ -348,22 +411,63 @@ const runtime = {
     const sashibo = session.results['Sashibo core'], tail = session.results['Tail cut']
     const isProvisional = session.tailAvailability === 'not_available' && !tail
     const defaultGrade: Grade = sashibo?.originalGrade ?? 'A'
+    const presets = ['Visual inspection', 'Confirmed AI grade', 'Color / texture check', ...(isProvisional ? ['Tail-cut unavailable'] : [])]
     const overlay = d.createElement('div'); overlay.className = 'ovl'
-    overlay.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="Manual override" style="width:min(500px,94%);padding:28px;border-radius:26px;display:grid;gap:14px">
-      <div><h2 style="margin:0 0 4px;font-size:24px;letter-spacing:-.025em">${isProvisional ? 'Confirm provisional grade' : 'Expert override'}</h2><p style="margin:0;font-size:13px;color:#5b6b84">Sashibo Core: <b>Grade ${sashibo?.originalGrade ?? '—'}</b> (${sashibo?.originalConfidence ?? '—'}%)${tail ? ` · Tail-Cut: <b>Grade ${tail.originalGrade ?? '—'}</b> (${tail.originalConfidence ?? '—'}%)` : ' · Tail-Cut: <b>NOT AVAILABLE</b>'}</p></div>
-      <label style="display:grid;gap:6px;font-size:13px;font-weight:600;color:#475569">Station PIN<input class="fi" id="expert-pin" type="password" inputmode="numeric" maxlength="4" placeholder="4-digit PIN"></label>
-      <div><div style="font-size:13px;font-weight:600;color:#475569;margin-bottom:6px">Final grade</div><div class="g3" style="margin:0">${(['A', 'B', 'C'] as Grade[]).map(g => `<button type="button" class="gopt${g === defaultGrade ? ' on' : ''}" data-grade="${g}">${g}</button>`).join('')}</div></div>
-      <label style="display:grid;gap:6px;font-size:13px;font-weight:600;color:#475569">Reason<input class="fi" id="expert-reason" placeholder="Reason for confirmation or override (required)"></label>
-      <div class="mf" style="margin-top:6px;display:flex;gap:10px;justify-content:flex-end"><button type="button" class="xbn bo" id="expert-cancel" style="border-radius:999px;padding:0 20px">Cancel</button><button type="button" class="xpr" id="expert-save" style="border-radius:999px;padding:0 22px">${isProvisional ? 'Confirm final grade' : 'Save override'}</button></div>
+    overlay.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="Manual override" style="width:min(740px,95%);padding:24px;border-radius:26px;display:grid;grid-template-columns:1fr 270px;gap:20px;align-items:start">
+      <div style="display:grid;gap:14px">
+        <div><h2 style="margin:0 0 4px;font-size:22px;letter-spacing:-.025em">${isProvisional ? 'Confirm provisional grade' : 'Expert override'}</h2><p style="margin:0;font-size:13px;color:#5b6b84">Sashibo Core: <b>Grade ${sashibo?.originalGrade ?? '—'}</b> (${sashibo?.originalConfidence ?? '—'}%)${tail ? ` · Tail-Cut: <b>Grade ${tail.originalGrade ?? '—'}</b> (${tail.originalConfidence ?? '—'}%)` : ' · Tail-Cut: <b>NOT AVAILABLE</b>'}</p></div>
+        <div><div style="font-size:12px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Final grade</div><div class="g3" style="margin:0">${(['A', 'B', 'C'] as Grade[]).map(g => `<button type="button" class="gopt${g === defaultGrade ? ' on' : ''}" data-grade="${g}" style="height:72px;font-size:32px;display:inline-flex;align-items:center;justify-content:center;text-align:center">${g}</button>`).join('')}</div></div>
+        <div style="display:grid;gap:8px">
+          <div style="font-size:12px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em">Reason (tap or type)</div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px">${presets.map((p, i) => `<button type="button" class="xbn bo" data-reason="${p}" style="height:34px;padding:0 12px;border-radius:999px;font-size:12px;display:inline-flex;align-items:center;justify-content:center;text-align:center;${i === 0 ? 'background:#edf3ff;border-color:#2159e8;color:#2159e8' : ''}">${p}</button>`).join('')}</div>
+          <input class="fi" id="expert-reason" value="${presets[0]}" placeholder="Reason for confirmation or override (required)" style="height:44px;font-size:14px">
+        </div>
+      </div>
+      <div style="display:grid;gap:12px;padding:16px;border-radius:20px;background:#f7faff;border:1px solid #e3ebf8">
+        <div style="text-align:center">
+          <div style="font-size:12px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em">Station PIN</div>
+          <div id="ov-pin-dots" style="display:flex;justify-content:center;gap:10px;margin:10px 0 4px">${[0, 1, 2, 3].map(() => `<span style="width:14px;height:14px;border-radius:50%;border:2px solid #cbd9ef;background:#fff;display:inline-block"></span>`).join('')}</div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+          ${[1, 2, 3, 4, 5, 6, 7, 8, 9, 'C', 0, '⌫'].map(k => `<button type="button" data-ovk="${k}" style="height:48px;border-radius:12px;border:1px solid #d5e1f5;background:#fff;color:#182842;font:700 ${k === 'C' ? '14px' : '20px'} Inter,system-ui,sans-serif;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;text-align:center">${k}</button>`).join('')}
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1.3fr;gap:8px;margin-top:4px">
+          <button type="button" class="xbn bo" id="expert-cancel" style="width:100%;height:44px;border-radius:999px;padding:0 12px;display:inline-flex;align-items:center;justify-content:center;text-align:center">Cancel</button>
+          <button type="button" class="xpr" id="expert-save" style="width:100%;height:44px;border-radius:999px;padding:0 14px;display:inline-flex;align-items:center;justify-content:center;text-align:center">${isProvisional ? 'Confirm' : 'Save'}</button>
+        </div>
+      </div>
     </div>`
-    d.getElementById('stage')!.append(overlay); let selected: Grade = defaultGrade
+    d.getElementById('stage')!.append(overlay); let selected: Grade = defaultGrade, pinVal = ''
+    const syncDots = () => {
+      overlay.querySelectorAll<HTMLElement>('#ov-pin-dots span').forEach((dot, idx) => {
+        const filled = idx < pinVal.length
+        dot.style.background = filled ? '#2159e8' : '#fff'
+        dot.style.borderColor = filled ? '#2159e8' : '#cbd9ef'
+      })
+    }
     overlay.querySelectorAll<HTMLButtonElement>('[data-grade]').forEach(b => b.onclick = () => { selected = b.dataset.grade as Grade; overlay.querySelectorAll('[data-grade]').forEach(x => x.classList.toggle('on', x === b)) })
+    const reasonInput = overlay.querySelector('#expert-reason') as HTMLInputElement
+    overlay.querySelectorAll<HTMLButtonElement>('[data-reason]').forEach(b => b.onclick = () => {
+      reasonInput.value = b.dataset.reason || ''
+      overlay.querySelectorAll<HTMLButtonElement>('[data-reason]').forEach(x => {
+        const active = x === b
+        x.style.background = active ? '#edf3ff' : ''
+        x.style.borderColor = active ? '#2159e8' : ''
+        x.style.color = active ? '#2159e8' : ''
+      })
+    })
+    overlay.querySelectorAll<HTMLButtonElement>('[data-ovk]').forEach(b => b.onclick = () => {
+      const k = b.dataset.ovk!
+      if (k === 'C') pinVal = ''
+      else if (k === '⌫') pinVal = pinVal.slice(0, -1)
+      else if (pinVal.length < 4) pinVal += k
+      syncDots()
+    })
     overlay.querySelector<HTMLButtonElement>('#expert-cancel')!.onclick = () => overlay.remove()
     overlay.querySelector<HTMLButtonElement>('#expert-save')!.onclick = async () => {
-      const reasonInput = overlay.querySelector('#expert-reason') as HTMLInputElement
       const reason = reasonInput.value.trim()
-      if (!reason) { toast('Enter a reason before confirming or overriding the grade.', 1); reasonInput.focus(); return }
-      if (!await runtime.pin((overlay.querySelector('#expert-pin') as HTMLInputElement).value)) { toast('Incorrect PIN or hosted admin authorization required.', 1); return }
+      if (!reason) { toast('Select or enter a reason before confirming.', 1); return }
+      if (pinVal.length < 4 || !await runtime.pin(pinVal)) { pinVal = ''; syncDots(); toast('Incorrect PIN or hosted admin authorization required.', 1); return }
       const sample = session.results['Tail cut'] ? 'Tail cut' : 'Sashibo core'
       session = reducer(session, { type: 'setOverride', sample, grade: selected, reason, actor: S.name, timestamp: new Date().toISOString() })
       const updated = session.results[sample]
@@ -373,6 +477,7 @@ const runtime = {
     }
   },
   async print(w: Kiosk) {
+    receiptSkipped = false
     const { S } = api(w)
     if (S.scr === 'detail') {
       const records = loadRecords(), anchor = records.find(record => record.id === S.detail?.id)
@@ -531,6 +636,48 @@ const runtime = {
             }
           }
         }
+        const styleGradeCard = (g: Grade | null | undefined, needsOverride: boolean) => {
+          const med = d.querySelector<HTMLElement>('.med5')
+          if (!med) return
+          const bg = needsOverride
+            ? 'linear-gradient(155deg,#090d16 0%,#1e293b 55%,#05070c 100%)'
+            : g === 'A'
+              ? 'linear-gradient(155deg,#0d9458 0%,#12a56a 54%,#065f46 100%)'
+              : g === 'B'
+                ? 'linear-gradient(155deg,#d97706 0%,#eab308 54%,#b45309 100%)'
+                : 'linear-gradient(155deg,#dc2626 0%,#ef4444 54%,#991b1b 100%)'
+          const border = needsOverride ? '#334155' : g === 'A' ? '#34d399' : g === 'B' ? '#fde047' : '#fca5a5'
+          med.style.setProperty('background', bg, 'important')
+          med.style.setProperty('border-color', border, 'important')
+          med.style.setProperty('color', '#fff', 'important')
+          med.querySelectorAll<HTMLElement>('.med5-l,.gt5,.gs5,.b5h span,.b5h b,.lg5').forEach(el => {
+            el.style.setProperty('color', '#fff', 'important')
+          })
+          const ringTrack = med.querySelector<SVGElement>('.med5-r circle:first-of-type')
+          const ringArc = med.querySelector<SVGElement>('.med5-a')
+          if (ringTrack) ringTrack.setAttribute('stroke', 'rgba(255,255,255,.24)')
+          if (ringArc) ringArc.setAttribute('stroke', '#ffffff')
+          const sp5 = med.querySelector<HTMLElement>('.sp5')
+          if (sp5) {
+            sp5.style.setProperty('background', 'rgba(0,0,0,.22)', 'important')
+            sp5.style.setProperty('border-color', 'rgba(255,255,255,.28)', 'important')
+            sp5.style.setProperty('color', '#fff', 'important')
+            const spSpan = sp5.querySelector<HTMLElement>('span')
+            if (spSpan) spSpan.style.setProperty('color', 'rgba(255,255,255,.92)', 'important')
+          }
+          d.querySelectorAll<HTMLElement>('.bs5 .b5t').forEach(track => {
+            track.style.setProperty('background', 'rgba(255,255,255,.24)', 'important')
+          })
+          d.querySelectorAll<HTMLElement>('.bs5 .xf').forEach(fill => {
+            fill.style.setProperty('background', '#ffffff', 'important')
+          })
+          const activeRateBox = d.querySelector<HTMLElement>('.t5g > div.on')
+          if (activeRateBox) {
+            activeRateBox.style.setProperty('background', bg, 'important')
+            activeRateBox.style.setProperty('border-color', border, 'important')
+            activeRateBox.querySelectorAll<HTMLElement>('b,span').forEach(el => el.style.setProperty('color', '#fff', 'important'))
+          }
+        }
         if (S.scr === 'final') {
           const button = d.getElementById('go')!
           const chip = d.querySelector('.v5h1 .v5c')
@@ -550,12 +697,177 @@ const runtime = {
           if (bars[0] && coreRes?.originalGrade) { const lbl = bars[0].querySelector('.b5h span'); if (lbl) lbl.textContent = `Core · Grade ${coreRes.originalGrade}` }
           if (bars[1] && tailRes?.originalGrade) { const lbl = bars[1].querySelector('.b5h span'); if (lbl) lbl.textContent = `Tail · Grade ${tailRes.originalGrade}` }
           const mixLabel = d.querySelector('.sp5 span'); if (mixLabel) mixLabel.textContent = tailRes ? 'Avg confidence' : 'Model confidence'
+          const needsOverride = decision.next === 'override'
+          const prelim = preliminaryGrade()
+          styleGradeCard(prelim, needsOverride)
           if (decision.provisional && chip) { chip.className = 'v5c c-am'; chip.innerHTML = '<i></i>PROVISIONAL' }
-          button.onclick = () => { if (decision.next === 'print' || decision.grade) api(w).go('receipt') }
+          if (needsOverride) {
+            if (chip) { chip.className = 'v5c c-am'; chip.innerHTML = '<i></i>OVERRIDE REQUIRED' }
+            const h1 = d.querySelector('.v5h h1'); if (h1) h1.textContent = 'Manual override required'
+            const gt = d.querySelector('.gt5'); if (gt) gt.textContent = `Grade ${prelim} · Needs Override`
+            const gs = d.querySelector('.gs5'); if (gs) gs.textContent = 'Tap below to confirm or override'
+            button.textContent = 'Manual override'
+            button.onclick = () => runtime.override(w)
+          } else {
+            button.onclick = () => { if (decision.next === 'print' || decision.grade) api(w).go('receipt') }
+          }
           d.querySelectorAll('.lg5').forEach(e => e.textContent = decision.detail)
           if (session.tailAvailability === 'not_available') {
             d.querySelectorAll('.ph5-f span').forEach(el => { if (el.textContent?.includes('Tail')) el.textContent = 'Tail-Cut: NOT AVAILABLE' })
           }
+          const finalBack = d.getElementById('bk')
+          if (finalBack) finalBack.onclick = () => api(w).modal({
+            title: 'Do you want to leave the session?',
+            body: 'Your current grading result will be discarded and you will return to the weight input.',
+            ok: 'Yes, leave session',
+            danger: 1,
+            onOk: () => {
+              S.core = S.tail = null; S.img = {}; S.w = ''; S.captureTime = undefined
+              session = { ...initialSession, graderName: S.name, results: {} }
+              order = S.order
+              api(w).go('weight')
+            }
+          })
+        }
+        if (S.scr === 'weight') {
+          const weightBack = d.getElementById('bk')
+          if (weightBack) weightBack.onclick = () => api(w).modal({
+            title: `Exit as ${S.name?.trim() || 'Grader'} ?`,
+            body: 'You will return to the grader selection screen.',
+            ok: 'Yes, exit',
+            danger: 1,
+            onOk: () => {
+              S.w = ''; S.core = S.tail = null; S.img = {}; S.captureTime = undefined
+              session = { ...initialSession, graderName: S.name, results: {} }
+              api(w).go('name')
+            }
+          })
+        }
+        if (S.scr === 'welcome' && !d.getElementById('te-ver-chip')) {
+          const verChip = d.createElement('button')
+          verChip.type = 'button'
+          verChip.id = 'te-ver-chip'
+          verChip.style.cssText = 'position:absolute;right:18px;top:82px;z-index:20;padding:3px 9px;border-radius:999px;border:1px solid rgba(255,255,255,.35);background:rgba(8,28,76,.55);color:rgba(255,255,255,.92);font:700 10px/1.2 Inter,system-ui,sans-serif;letter-spacing:.04em;cursor:pointer;display:inline-flex;align-items:center;gap:5px'
+          verChip.innerHTML = `<span style="width:6px;height:6px;border-radius:50%;background:#38bdf8;display:inline-block"></span><span>v2.6 · Git Log</span>`
+          verChip.onclick = () => {
+            d.getElementById('te-ver-modal')?.remove()
+            const m = d.createElement('div'); m.className = 'ovl'; m.id = 'te-ver-modal'
+            const commits: Array<{ hash: string; type: 'merge' | 'branch' | 'main'; branch: string; title: string; v2Base: string; improved: string }> = [
+              {
+                hash: 'e84c91a',
+                type: 'merge',
+                branch: 'merge: feat/done-ux-v2.6 → main',
+                title: 'Completion Screen ("Results printed." vs "Results recorded.") & 3s Auto-Next',
+                v2Base: 'In v2.0: Static "Results printed." heading with a bottom-pinned button and no skip differentiation.',
+                improved: 'Improved in v2.6: Dynamically shows "Results recorded." when receipt printing is skipped (or "Results printed." when printed), moves "Grade another" to the middle-center, and runs a live 3-second countdown ring.'
+              },
+              {
+                hash: 'c72b40f',
+                type: 'branch',
+                branch: 'feat/grade-card-themes',
+                title: 'Color-Coded Grade Cards (A/B/C) & Black Override Gradient',
+                v2Base: 'In v2.0: White/neutral card with confidence averaged as "Mixed score" and fallback to Grade C.',
+                improved: 'Improved in v2.6: Full card gradient colored by grade (A = Green, B = Yellow, C = Red) with white grade letter, or Black gradient when Manual Override is required.'
+              },
+              {
+                hash: 'a19d83e',
+                type: 'merge',
+                branch: 'merge: feat/tailcut-75-svg → main',
+                title: '75% Tail-Cut Confidence Rule, SVG Visual Guide & Auto Camera Reset',
+                v2Base: 'In v2.0: Text-only prompt on every core scan and toast-only invalid image error.',
+                improved: 'Improved in v2.6: Tail-Cut only requested when Sashibo Core confidence is <75%, with SVG illustrations and side-by-side "Scan Tail-Cut" / "No Tail-Cut" buttons. Invalid scans show a 2s modal and auto-reopen the live camera.'
+              },
+              {
+                hash: '9f04e2b',
+                type: 'branch',
+                branch: 'feat/override-keypad-2col',
+                title: '2-Column Expert Override with On-Screen PIN Number Pad',
+                v2Base: 'In v2.0: Single-column form requiring tablet on-screen keyboard for PIN and reason.',
+                improved: 'Improved in v2.6: 2-column layout with 12-button touch PIN keypad, quick-tap reason chips, and centered action buttons.'
+              },
+              {
+                hash: '6d51a9c',
+                type: 'merge',
+                branch: 'merge: feat/camera-droidcam-records → main',
+                title: 'Multi-Camera Selector (DroidCam :4747 + USB) & Real Evidence in Records',
+                v2Base: 'In v2.0: Fixed Pi :8080 stream only, and Recent Records fell back to demo sample images.',
+                improved: 'Improved in v2.6: Added Camera Refresh, Trigger, permission prompt, DroidCam URL (:4747), and real IndexedDB evidence images in Recent Records.'
+              },
+              {
+                hash: '3b10f74',
+                type: 'main',
+                branch: 'main · v2.0-base',
+                title: 'TunaEye V2 Dual-Model Core Architecture & Cloud Sync',
+                v2Base: 'Base v2.0: Separate Sashibo Core & Tail-Cut V2 models on Pi 5, offline IndexedDB/SQLite storage, 58mm thermal receipts, and Supabase cloud sync.',
+                improved: 'Active foundation: All v2.6 merges build directly on this V2 station pipeline.'
+              }
+            ]
+            const graphNodeSvg = (type: 'merge' | 'branch' | 'main', isLast: boolean) => {
+              if (type === 'merge') {
+                return `<svg width="36" height="100%" viewBox="0 0 36 110" preserveAspectRatio="none" style="display:block;min-height:96px"><line x1="12" y1="0" x2="12" y2="110" stroke="#388bfd" stroke-width="2.5"/><path d="M12 22 C24 22, 26 36, 26 52 L26 82 C26 96, 22 104, 12 106" fill="none" stroke="#f59e0b" stroke-width="2.2"/><circle cx="12" cy="22" r="6.5" fill="#0d1117" stroke="#388bfd" stroke-width="2.5"/><circle cx="12" cy="22" r="2.8" fill="#388bfd"/></svg>`
+              }
+              if (type === 'branch') {
+                return `<svg width="36" height="100%" viewBox="0 0 36 110" preserveAspectRatio="none" style="display:block;min-height:96px"><line x1="12" y1="0" x2="12" y2="110" stroke="#388bfd" stroke-width="2.5"/><line x1="26" y1="0" x2="26" y2="110" stroke="#f59e0b" stroke-width="2.2"/><circle cx="26" cy="24" r="5.5" fill="#f59e0b" stroke="#0d1117" stroke-width="2"/></svg>`
+              }
+              return `<svg width="36" height="100%" viewBox="0 0 36 110" preserveAspectRatio="none" style="display:block;min-height:96px"><line x1="12" y1="0" x2="12" y2="${isLast ? '28' : '110'}" stroke="#388bfd" stroke-width="2.5"/><circle cx="12" cy="22" r="5.5" fill="#388bfd" stroke="#0d1117" stroke-width="2"/></svg>`
+            }
+            m.innerHTML = `<section class="sheet" role="dialog" aria-modal="true" aria-label="Version updates" style="width:min(650px,96%);max-height:88%;overflow:auto;padding:22px;border-radius:24px;background:#0d1117;color:#e6edf3;border:1px solid #30363d;font-family:Inter,system-ui,sans-serif;display:grid;gap:14px;box-shadow:0 28px 70px rgba(0,0,0,.55)">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding-bottom:12px;border-bottom:1px solid #21262d">
+                <div>
+                  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                    <h2 style="margin:0;font-size:18px;color:#fff;letter-spacing:-.02em">TunaEye Git Graph & Version Control</h2>
+                    <span style="padding:2px 8px;border-radius:999px;background:rgba(56,139,253,.18);border:1px solid rgba(56,139,253,.4);color:#58a6ff;font:700 10.5px ui-monospace,monospace">HEAD → main (v2.6)</span>
+                  </div>
+                  <div id="te-ver-live" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:7px;font-size:11px;color:#8b949e">Checking live station & cloud connection…</div>
+                </div>
+                <button type="button" id="te-ver-close" style="height:32px;padding:0 14px;border-radius:999px;border:1px solid #30363d;background:#161b22;color:#e6edf3;font:600 12px Inter,system-ui,sans-serif;cursor:pointer">Close</button>
+              </div>
+              <div style="display:grid;gap:0">
+                ${commits.map((c, idx) => `<div style="display:grid;grid-template-columns:36px 1fr;gap:8px;align-items:stretch">
+                  ${graphNodeSvg(c.type, idx === commits.length - 1)}
+                  <div style="margin-bottom:10px;padding:11px 13px;border-radius:14px;background:#161b22;border:1px solid ${c.type === 'merge' ? '#1f6feb' : c.type === 'branch' ? 'rgba(245,158,11,.45)' : '#30363d'}">
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:4px">
+                      <span style="font:700 12.5px Inter,system-ui,sans-serif;color:#fff">${c.title}</span>
+                      <div style="display:flex;align-items:center;gap:5px">
+                        <span style="padding:2px 7px;border-radius:999px;background:${c.type === 'merge' ? 'rgba(56,139,253,.16)' : c.type === 'branch' ? 'rgba(245,158,11,.16)' : 'rgba(139,148,158,.16)'};color:${c.type === 'merge' ? '#58a6ff' : c.type === 'branch' ? '#fbbf24' : '#8b949e'};font:700 10px ui-monospace,monospace">${c.branch}</span>
+                        <code style="padding:2px 6px;border-radius:6px;background:#0d1117;border:1px solid #30363d;color:#8b949e;font-size:10px">${c.hash}</code>
+                      </div>
+                    </div>
+                    <div style="display:grid;gap:4px;font-size:11.5px;line-height:1.45;margin-top:6px">
+                      <div style="padding:5px 8px;border-radius:8px;background:rgba(139,148,158,.1);color:#9ca3af"><b style="color:#cbd5e1">v2.0 Base:</b> ${c.v2Base.replace(/^In v2\.0:\s*|^Base v2\.0:\s*/i, '')}</div>
+                      <div style="padding:5px 8px;border-radius:8px;background:rgba(46,160,67,.14);border:1px solid rgba(46,160,67,.3);color:#aff5b4"><b style="color:#56d364">+ Merged Improvement:</b> ${c.improved.replace(/^Improved in v2\.6:\s*|^Active foundation:\s*/i, '')}</div>
+                    </div>
+                  </div>
+                </div>`).join('')}
+              </div>
+            </section>`
+            m.onclick = ev => { if (ev.target === m) m.remove() }
+            ;(d.getElementById('stage') ?? d.body).append(m)
+            m.querySelector<HTMLButtonElement>('#te-ver-close')!.onclick = () => m.remove()
+            void (async () => {
+              const liveEl = m.querySelector<HTMLElement>('#te-ver-live')
+              if (!liveEl) return
+              const settings = getPiSettings()
+              let piOk = false, modelsOk = false
+              if (settings.configured) {
+                try {
+                  const st = await checkPiHealth()
+                  piOk = true
+                  modelsOk = Boolean(st.models?.sashibocore && st.models?.tailcut)
+                } catch { piOk = false }
+              }
+              const cloudOk = navigator.onLine && isSupabaseConfigured() ? await checkCloudConnection().catch(() => false) : false
+              if (!liveEl.isConnected) return
+              const pillTag = (ok: boolean, text: string) => `<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:999px;background:${ok ? 'rgba(46,160,67,.18)' : 'rgba(248,81,73,.16)'};color:${ok ? '#56d364' : '#ff7b72'};border:1px solid ${ok ? 'rgba(46,160,67,.4)' : 'rgba(248,81,73,.35)'};font-weight:700"><i style="width:6px;height:6px;border-radius:50%;background:${ok ? '#3fb950' : '#f85149'};display:inline-block"></i>${text}</span>`
+              liveEl.innerHTML = [
+                pillTag(piOk, piOk ? 'Pi :5000 Connected' : 'Pi :5000 Offline'),
+                pillTag(modelsOk, modelsOk ? 'V2 Models Merged & Active' : 'V2 Models Standby'),
+                pillTag(cloudOk, cloudOk ? 'Supabase Cloud Synced' : (navigator.onLine ? 'Cloud Standby' : 'Local Offline Mode')),
+                `<span style="padding:2px 8px;border-radius:999px;background:#21262d;color:#c9d1d9;font-weight:600">Threshold: ≥${ACCEPT_CONFIDENCE}%</span>`
+              ].join('')
+            })()
+          }
+          ;(d.querySelector('.scr') ?? d.body).append(verChip)
         }
         if (S.scr === 'detail' && S.detail) {
           const det = S.detail as { coreImgId?: string | null; tailImgId?: string | null; coreGrade?: Grade | null; tailGrade?: Grade | null; c?: number | null; tl?: number | null; isDemo?: boolean }
@@ -574,6 +886,7 @@ const runtime = {
           if (bars[0] && det.coreGrade) { const lbl = bars[0].querySelector('.b5h span'); if (lbl) lbl.textContent = `Core · Grade ${det.coreGrade}` }
           if (bars[1] && det.tailGrade) { const lbl = bars[1].querySelector('.b5h span'); if (lbl) lbl.textContent = `Tail · Grade ${det.tailGrade}` }
           const mixLabel = d.querySelector('.sp5 span'); if (mixLabel) mixLabel.textContent = det.tl != null ? 'Avg confidence' : 'Model confidence'
+          styleGradeCard((S.detail as { g?: Grade }).g ?? det.coreGrade, false)
           const loadDetailImg = async (zoomKey: 'core' | 'tail', imgId?: string | null) => {
             const box = d.querySelector<HTMLElement>(`.ph5[data-zoom="${zoomKey}"]`)
             const img = box?.querySelector<HTMLImageElement>('img.v5ph')
@@ -632,7 +945,61 @@ const runtime = {
           if (msg.includes('chrome://flags')) api(w).modal({ title: 'Install TunaEye on Tablet', body: msg.replace(/\n/g, '<br>'), ok: 'Got it', onOk: () => { } })
           else api(w).toast(msg)
         }
-        if (S.scr === 'receipt') { const skip = d.getElementById('sk'); if (skip) skip.onclick = () => api(w).modal({ title: 'Skip printing?', body: 'The record remains saved locally.', ok: 'Skip receipt', onOk: () => runtime.finish(w) }) }
+        if (S.scr === 'receipt') {
+          const skip = d.getElementById('sk')
+          if (skip) skip.onclick = () => api(w).modal({
+            title: 'Skip printing?',
+            body: 'The record remains saved locally.',
+            ok: 'Skip receipt',
+            onOk: () => { receiptSkipped = true; runtime.finish(w) }
+          })
+          const rsum = d.querySelector<HTMLElement>('.rsum')
+          const rtile = d.querySelector<HTMLElement>('.rtile')
+          const g = ((rtile?.textContent?.trim() || preliminaryGrade()) as Grade)
+          if (rsum) {
+            const bg = g === 'A'
+              ? 'linear-gradient(155deg,#0d9458 0%,#12a56a 54%,#065f46 100%)'
+              : g === 'B'
+                ? 'linear-gradient(155deg,#d97706 0%,#eab308 54%,#b45309 100%)'
+                : 'linear-gradient(155deg,#dc2626 0%,#ef4444 54%,#991b1b 100%)'
+            const border = g === 'A' ? '#34d399' : g === 'B' ? '#fde047' : '#fca5a5'
+            rsum.style.setProperty('background', bg, 'important')
+            rsum.style.setProperty('border-color', border, 'important')
+            rsum.style.setProperty('color', '#fff', 'important')
+            if (rtile) {
+              rtile.style.setProperty('background', 'rgba(255,255,255,.22)', 'important')
+              rtile.style.setProperty('border', '1.5px solid rgba(255,255,255,.45)', 'important')
+              rtile.style.setProperty('color', '#fff', 'important')
+            }
+            rsum.querySelectorAll<HTMLElement>('.ramt, small, b').forEach(el => {
+              el.style.setProperty('color', '#fff', 'important')
+            })
+            rsum.querySelectorAll<HTMLElement>('.rsum-r > div').forEach(cell => {
+              cell.style.setProperty('background', 'rgba(0,0,0,.2)', 'important')
+              cell.style.setProperty('border-color', 'rgba(255,255,255,.24)', 'important')
+            })
+            if (!d.getElementById('te-bt-print-btn')) {
+              const btWrap = d.createElement('div')
+              btWrap.id = 'te-bt-print-btn'
+              btWrap.style.cssText = 'margin-top:12px;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 14px;border-radius:14px;background:#f4f8ff;border:1px solid #dbe6fa'
+              const renderBt = () => {
+                const name = getConnectedBtPrinterName()
+                btWrap.innerHTML = `<div style="font-size:12px;color:#334155"><b>Bluetooth 58mm Printer:</b> ${name ? `<span style="color:#15803d;font-weight:700">${name} · Auto-Print ON</span>` : '<span style="color:#64748b">System dialog / Tap to pair direct BT</span>'}</div><button type="button" id="te-bt-pair" style="height:30px;padding:0 12px;border-radius:999px;border:1px solid #c7d8fa;background:#fff;color:#2159e8;font:700 11.5px Inter,system-ui,sans-serif;cursor:pointer">${name ? 'Reconnect BT' : 'Pair BT Printer'}</button>`
+                btWrap.querySelector<HTMLButtonElement>('#te-bt-pair')!.onclick = async () => {
+                  try {
+                    const paired = await pairBluetoothPrinter()
+                    renderBt()
+                    api(w).toast(`Paired ${paired} — receipts will auto-print directly via Bluetooth`)
+                  } catch (err) {
+                    api(w).toast(err instanceof Error ? err.message : 'Bluetooth printer pairing cancelled.', 1)
+                  }
+                }
+              }
+              renderBt()
+              rsum.after(btWrap)
+            }
+          }
+        }
         if (S.scr === 'admin' && S.tab === 'devices') {
           d.querySelectorAll('.bd.ok').forEach(e => e.textContent = 'Not verified')
           const b = d.createElement('button'); b.className = 'xpr'; b.textContent = 'Check Raspberry Pi'; b.onclick = async () => { try { await checkPiHealth(); api(w).toast('Pi status endpoint reachable') } catch (e) { api(w).toast(e instanceof Error ? e.message : 'Pi unavailable', 1) } }; d.querySelector('.ab2')?.append(b)
@@ -651,7 +1018,71 @@ const runtime = {
           d.querySelectorAll('.as > div').forEach(el => { if (el.textContent?.includes('System online')) el.textContent = navigator.onLine ? 'Network available · Pi not checked' : 'Network offline · records retained' })
         }
       }
-    const done = SC.done; SC.done = () => { const screen = done(); screen.after = () => { const e = w.document.querySelector('.cdw'); if (e) { e.innerHTML = '<button class="pill">Grade another</button>'; e.querySelector('button')!.onclick = () => w.eval('fresh()') } }; return screen }
+    const done = SC.done
+    SC.done = () => {
+      const screen = done()
+      screen.after = () => {
+        const d = w.document
+        const heading = Array.from(d.querySelectorAll<HTMLElement>('.scr div')).find(el => el.textContent?.trim() === 'Results printed.')
+        if (heading) {
+          heading.textContent = receiptSkipped ? 'Results recorded.' : 'Results printed.'
+          heading.style.margin = '14px 0 16px'
+        }
+        const sumc = d.querySelector<HTMLElement>('.sumc')
+        if (sumc) {
+          const tile = sumc.firstElementChild as HTMLElement | null
+          const g = (tile?.textContent?.trim() || 'A') as Grade
+          const cardBg = g === 'A'
+            ? 'linear-gradient(155deg,#0d9458 0%,#12a56a 54%,#065f46 100%)'
+            : g === 'B'
+              ? 'linear-gradient(155deg,#d97706 0%,#eab308 54%,#b45309 100%)'
+              : 'linear-gradient(155deg,#dc2626 0%,#ef4444 54%,#991b1b 100%)'
+          const cardBorder = g === 'A' ? '#34d399' : g === 'B' ? '#fde047' : '#fca5a5'
+          sumc.style.setProperty('background', cardBg, 'important')
+          sumc.style.setProperty('border-color', cardBorder, 'important')
+          sumc.style.setProperty('color', '#fff', 'important')
+          if (tile) {
+            tile.style.setProperty('background', 'rgba(255,255,255,.22)', 'important')
+            tile.style.setProperty('border', '1.5px solid rgba(255,255,255,.45)', 'important')
+            tile.style.setProperty('color', '#fff', 'important')
+          }
+          sumc.querySelectorAll<HTMLElement>('div').forEach(el => {
+            el.style.setProperty('color', '#fff', 'important')
+          })
+          const sub = sumc.querySelectorAll<HTMLElement>('div')[3]
+          if (sub && sub.textContent) sub.textContent = sub.textContent.replace('Mixed ', 'Confidence ')
+        }
+        const cdw = d.querySelector<HTMLElement>('.cdw')
+        if (cdw) {
+          cdw.style.cssText = 'position:static;margin:24px auto 0;display:flex;flex-direction:column;align-items:center;gap:12px'
+          cdw.innerHTML = `<button type="button" class="pill" id="te-grade-another" style="min-width:250px;height:58px;padding:0 28px;border-radius:999px;font-size:19px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;gap:12px;box-shadow:0 16px 36px -12px rgba(37,99,255,.55)"><span>Grade another</span><span id="te-cdn-badge" style="width:30px;height:30px;border-radius:50%;background:rgba(255,255,255,.22);display:inline-grid;place-items:center;font-size:15px;font-weight:900">3</span></button><div style="font-size:13px;font-weight:700;color:#64748b">Starting next fish automatically in <b id="te-cdn-txt" style="color:#1e293b">3s</b>…</div>`
+          sumc?.parentElement?.append(cdw)
+          let remaining = 3
+          let cancelled = false
+          const triggerNext = () => {
+            if (cancelled) return
+            cancelled = true
+            w.eval('fresh()')
+          }
+          cdw.querySelector<HTMLButtonElement>('#te-grade-another')!.onclick = triggerNext
+          const tick = () => {
+            if (cancelled || api(w).S.scr !== 'done' || !cdw.isConnected) return
+            remaining -= 1
+            if (remaining <= 0) {
+              triggerNext()
+              return
+            }
+            const b = cdw.querySelector('#te-cdn-badge')
+            const t = cdw.querySelector('#te-cdn-txt')
+            if (b) b.textContent = String(remaining)
+            if (t) t.textContent = `${remaining}s`
+            w.setTimeout(tick, 1000)
+          }
+          w.setTimeout(tick, 1000)
+        }
+      }
+      return screen
+    }
     api(w).R()
     if (tabletEntry) w.document.addEventListener('pointerdown', () => {
       if (!document.fullscreenElement) void document.documentElement.requestFullscreen?.().catch(() => { })
@@ -662,9 +1093,9 @@ const runtime = {
       pill.id = 'te-net-pill'
       pill.setAttribute('aria-live', 'polite')
       pill.setAttribute('aria-label', 'View network and connection details')
-      pill.style.cssText = 'position:fixed;right:12px;bottom:10px;z-index:25;pointer-events:auto;cursor:pointer;display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:999px;font:700 11px/1.2 Inter,system-ui,sans-serif;background:rgba(255,255,255,.94);color:#182842;border:1px solid rgba(18,59,112,.16);box-shadow:0 2px 10px rgba(18,59,112,.12);backdrop-filter:blur(6px)'
+      pill.style.cssText = 'position:fixed;left:12px;top:12px;z-index:25;pointer-events:auto;cursor:pointer;width:34px;height:34px;padding:0;border-radius:50%;display:grid;place-items:center;background:rgba(255,255,255,.94);color:#182842;border:1px solid rgba(18,59,112,.18);box-shadow:0 2px 10px rgba(18,59,112,.14)'
       w.document.body.append(pill)
-      const barsSvg = (bars: number, color: string) => `<svg width="14" height="12" viewBox="0 0 14 12" aria-hidden="true">${[0, 1, 2].map(i => `<rect x="${i * 5}" y="${8 - i * 3}" width="3" height="${4 + i * 3}" rx="1" fill="${i < bars ? color : '#cbd5e1'}"/>`).join('')}</svg>`
+      const barsSvg = (bars: number, color: string) => `<svg width="15" height="13" viewBox="0 0 14 12" aria-hidden="true">${[0, 1, 2].map(i => `<rect x="${i * 5}" y="${8 - i * 3}" width="3" height="${4 + i * 3}" rx="1" fill="${i < bars ? color : '#cbd5e1'}"/>`).join('')}</svg>`
       let latest = { piOk: false, piMs: 0, camOk: false, sashiboOk: false, tailOk: false, cloudOk: false, bars: 0, color: '#dc2626', label: 'Checking…', rtt: 0 }
       const renderModal = () => {
         const modal = w.document.getElementById('te-net-modal')
@@ -748,8 +1179,8 @@ const runtime = {
             ? 'Wi-Fi · Cloud ready'
             : (navigator.onLine ? 'Wi-Fi · Saved locally' : 'Offline · Saved locally')
         latest = { piOk, piMs, camOk, sashiboOk, tailOk, cloudOk, bars, color, label, rtt }
-        latest = { piOk, piMs, camOk, sashiboOk, tailOk, cloudOk, bars, color, label, rtt }
-        pill.innerHTML = `${barsSvg(bars, color)}<span>${label}</span>`
+        pill.title = label
+        pill.innerHTML = barsSvg(bars, color)
         renderModal()
       }
       void refreshNetPill()
@@ -794,7 +1225,8 @@ export function launchExactUI(showBootDial = true) {
       if ((event.target as Element)?.closest('[data-act="install"]')) { event.preventDefault(); event.stopImmediatePropagation(); void requestPwaInstall().then(message => landing.alert(message)); return }
       if ((event.target as Element)?.closest('[data-act="start"]')) void showLoadingDial('Opening grading kiosk')
     }, true)
-    const tablet = navigator.maxTouchPoints > 0 && Math.min(screen.width, screen.height) >= 600 && (navigator.userAgent.includes('Android') || navigator.userAgent.includes('iPad') || navigator.platform === 'MacIntel')
+    const standalone = matchMedia('(display-mode: standalone)').matches || matchMedia('(display-mode: fullscreen)').matches
+    const tablet = standalone || (navigator.maxTouchPoints > 0 && matchMedia('(pointer: coarse)').matches && (/Android|iPad|Tablet|Silk|PlayBook/i.test(navigator.userAgent) || navigator.platform === 'MacIntel' || Math.max(window.innerWidth, window.innerHeight) >= 600))
     if (tablet) {
       tabletEntry = true
       landing.eval('window.openKiosk()')

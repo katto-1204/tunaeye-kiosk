@@ -69,7 +69,7 @@ export interface Session {
 }
 
 export const sampleOrder: SampleType[] = ['Sashibo core', 'Tail cut']
-export const ACCEPT_CONFIDENCE = 0
+export const ACCEPT_CONFIDENCE = 75
 
 export type GradeSource = 'sashibo' | 'combined' | 'expert' | 'tail-needed' | 'expert-needed' | 'retake' | 'pending'
 
@@ -86,7 +86,9 @@ export interface FinalDecision {
 
 export function isAccepted(result: SampleResult | number | null | undefined) {
   if (experimentalPolicy) return typeof result === 'object' && result !== null && meetsExperimentalPolicy(result)
-  if (typeof result === 'object' && result !== null) return result.status !== 'invalid' && result.originalGrade !== null
+  if (typeof result === 'object' && result !== null) {
+    return result.status !== 'invalid' && result.originalGrade !== null && typeof result.originalConfidence === 'number' && result.originalConfidence >= ACCEPT_CONFIDENCE
+  }
   return typeof result === 'number' && Number.isFinite(result) && result >= ACCEPT_CONFIDENCE
 }
 
@@ -116,13 +118,27 @@ export function decisionFor(state: Session): FinalDecision {
   if (tail?.overrideGrade) return { grade: tail.overrideGrade, confidence: tail.originalConfidence, source: 'expert', title: `Grade ${tail.overrideGrade}`, detail: 'An authorized grader confirmed the final grade after review.', provisional: false, next: 'print' }
   if (sashibo.overrideGrade) return { grade: sashibo.overrideGrade, confidence: sashibo.originalConfidence, source: 'expert', title: provisional ? `Grade ${sashibo.overrideGrade} (Provisional)` : `Grade ${sashibo.overrideGrade}`, detail: provisional ? 'Provisional Sashibo-only assessment confirmed by an authorized grader (Tail-Cut not available).' : 'An authorized grader confirmed the final grade.', provisional, next: 'print' }
   if (provisional && !tail) {
-    if (sashibo.originalGrade) {
+    if (sashibo.originalGrade && (sashibo.originalConfidence ?? 0) >= 60) {
       return { grade: sashibo.originalGrade, confidence: sashibo.originalConfidence, source: 'sashibo', title: `Grade ${sashibo.originalGrade} (Provisional)`, detail: `Sashibo Core is Grade ${sashibo.originalGrade} (${sashibo.originalConfidence ?? '—'}%). Tail-Cut is not available.`, provisional: true, next: 'print' }
     }
-    return { grade: null, confidence: sashibo.originalConfidence, source: 'expert-needed', title: 'Provisional — Confirmation required', detail: 'Sashibo Core grade unavailable. Authorized grader confirmation is required before finalizing.', provisional: true, reviewFlagged: true, next: 'override' }
+    return { grade: null, confidence: sashibo.originalConfidence, source: 'expert-needed', title: 'Provisional — Manual override required', detail: `Sashibo Core confidence is very low (${sashibo.originalConfidence ?? '—'}%) and Tail-Cut is not available. An authorized grader must confirm the final grade.`, provisional: true, reviewFlagged: true, next: 'override' }
   }
-  if (!tail) return { grade: sashibo.originalGrade, confidence: sashibo.originalConfidence, source: 'tail-needed', title: 'Is a Tail-Cut sample available?', detail: `Sashibo Core is Grade ${sashibo.originalGrade ?? '—'} (${sashibo.originalConfidence ?? '—'}%). Scan Tail-Cut if available, or continue provisionally.`, next: 'tail' }
+  if (!tail) {
+    if (isAccepted(sashibo) && sashibo.originalGrade) {
+      return { grade: sashibo.originalGrade, confidence: sashibo.originalConfidence, source: 'sashibo', title: `Grade ${sashibo.originalGrade}`, detail: `Sashibo Core is Grade ${sashibo.originalGrade} (${sashibo.originalConfidence ?? '—'}%) above the ${ACCEPT_CONFIDENCE}% confidence threshold. Tail-Cut not required.`, next: 'print' }
+    }
+    return { grade: sashibo.originalGrade, confidence: sashibo.originalConfidence, source: 'tail-needed', title: 'Is a Tail-Cut sample available?', detail: `Sashibo Core is Grade ${sashibo.originalGrade ?? '—'} (${sashibo.originalConfidence ?? '—'}%). Scan Tail-Cut if available, or continue provisionally.`, next: 'tail' }
+  }
   if (tail.status === 'invalid') return { grade: null, confidence: tail.originalConfidence, source: 'retake', title: 'Retake the tail cut', detail: 'This tail-cut image cannot be graded. Capture it again inside the guide.', next: 'retake' }
+  const avgConfidence = ((sashibo.originalConfidence ?? 0) + (tail.originalConfidence ?? 0)) / 2
+  const bothBelowThreshold = !isAccepted(sashibo) && !isAccepted(tail)
+  const severeDisagreement = Boolean(sashibo.originalGrade && tail.originalGrade && ((sashibo.originalGrade === 'A' && tail.originalGrade === 'C') || (sashibo.originalGrade === 'C' && tail.originalGrade === 'A')))
+  if (bothBelowThreshold || avgConfidence < ACCEPT_CONFIDENCE || severeDisagreement) {
+    const reason = severeDisagreement
+      ? `Severe model disagreement: Sashibo Core (Grade ${sashibo.originalGrade}, ${sashibo.originalConfidence ?? '—'}%) vs Tail-Cut (Grade ${tail.originalGrade}, ${tail.originalConfidence ?? '—'}%).`
+      : `Combined confidence (${avgConfidence.toFixed(1)}%) is below the ${ACCEPT_CONFIDENCE}% threshold (Core ${sashibo.originalConfidence ?? '—'}%, Tail ${tail.originalConfidence ?? '—'}%).`
+    return { grade: null, confidence: Math.round(avgConfidence * 10) / 10, source: 'expert-needed', title: 'Manual override required', detail: `${reason} An authorized grader must confirm the final grade.`, reviewFlagged: true, next: 'override' }
+  }
   if (sashibo.originalGrade && tail.originalGrade) {
     if (sashibo.originalGrade === tail.originalGrade) {
       return { grade: sashibo.originalGrade, confidence: sashibo.originalConfidence, source: 'combined', title: `Grade ${sashibo.originalGrade}`, detail: `Sashibo Core (${sashibo.originalGrade}, ${sashibo.originalConfidence ?? '—'}%) and Tail-Cut (${tail.originalGrade}, ${tail.originalConfidence ?? '—'}%) agree.`, next: 'print' }

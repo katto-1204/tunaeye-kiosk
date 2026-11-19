@@ -129,9 +129,18 @@ function demoScores(grade: Grade): Record<string, number> {
 
 export async function loadDemoSampleBlob(sample: SampleType, sampleIndex: number): Promise<Blob> {
   const grade = gradeHints.get(sample) ?? scenarioTable[scenario][sample].grade
-  const response = await fetch(demoAssetPath(sample, grade))
-  if (!response.ok) throw new Error(`Demo sample missing: ${demoAssetPath(sample, grade)}`)
-  return response.blob()
+  try {
+    const response = await fetch(demoAssetPath(sample, grade))
+    if (response.ok) return await response.blob()
+  } catch { /* Offline or disconnected from station host: fall back to generated canvas blob */ }
+  const canvas = document.createElement('canvas')
+  canvas.width = 320; canvas.height = 200
+  const ctx = canvas.getContext('2d')!
+  ctx.fillStyle = sample === 'Tail cut' ? '#7f1d1d' : '#991b1b'
+  ctx.fillRect(0, 0, 320, 200)
+  const fallback = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.9))
+  if (fallback) return fallback
+  throw new Error(`Demo sample missing: ${demoAssetPath(sample, grade)}`)
 }
 
 export function getDemoPreviewUrl(sample: SampleType, sampleIndex: number) {

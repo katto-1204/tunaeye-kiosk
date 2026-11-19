@@ -4,8 +4,8 @@ import type { DemoOutcome, Grade, SampleType } from './kioskState'
 
 const DEFAULT_API_URL = 'http://10.42.0.1:5000'
 const DEFAULT_CAMERA_URL = 'http://10.42.0.1:8080'
-const STATUS_TIMEOUT_MS = 8_000
-const SNAPSHOT_TIMEOUT_MS = 8_000
+const STATUS_TIMEOUT_MS = 2_500
+const SNAPSHOT_TIMEOUT_MS = 3_000
 export const PI_CONNECTION_GUIDANCE = 'Connect to the TunaRpi Wi-Fi and open http://10.42.0.1:5000, or configure an authenticated HTTPS TunaEye gateway.'
 
 export type PiDeploymentMode = 'pi-local' | 'hosted-gateway' | 'development-local' | 'unconfigured'
@@ -106,7 +106,7 @@ async function detectImageMimeType(blob: Blob): Promise<string | null> {
   return null
 }
 
-async function request(url: string, stage: PiStage, init?: RequestInit, attempts = 2): Promise<Response> {
+async function request(url: string, stage: PiStage, init?: RequestInit, attempts = 1): Promise<Response> {
   if (window.location.protocol === 'https:' && url.startsWith('http://')) throw new PiIntegrationError(stage, PI_CONNECTION_GUIDANCE)
   const label = stage === 'snapshot' ? 'Snapshot' : stage === 'inference' ? 'Inference' : 'Status'
   const timeoutMs = stage === 'status' ? STATUS_TIMEOUT_MS : stage === 'snapshot' ? SNAPSHOT_TIMEOUT_MS : null

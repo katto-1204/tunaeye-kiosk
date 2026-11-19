@@ -24,7 +24,7 @@ async function storageCheck() {
     }
   })
   try {
-    const response = await fetch('/local-api/health', { cache: 'no-store', signal: AbortSignal.timeout(8000) })
+    const response = await fetch('/local-api/health', { cache: 'no-store', signal: AbortSignal.timeout(2000) })
     const contentType = response.headers.get('content-type') ?? ''
     if (response.status === 404 || contentType.includes('text/html')) {
       return 'Browser storage and IndexedDB are ready (no station SQLite sidecar on this host).'
@@ -70,16 +70,30 @@ export function showLiveReadiness(w: Window): Promise<boolean> {
       running = true; rows.forEach(row => { row.state = 'checking'; row.detail = 'Checking…' }); render()
       await Promise.allSettled([
         (async () => {
+          let piReachable = false
           try {
             const settings = getPiSettings()
             if (!settings.configured) throw Error('Open the Pi-hosted kiosk or configure its HTTPS gateway.')
             const status = await checkPiHealth()
+            piReachable = true
             set('network', 'ready', 'The configured Pi endpoint is reachable on this network.')
             set('server', 'ready', `${status.service || 'Inference service'} answered /status.`)
             for (const key of ['sashibocore', 'tailcut'] as const) set(key, status.models?.[key] === true ? 'ready' : 'error', status.models?.[key] === true ? 'Backend reports model loaded.' : status.models?.[key] === false ? 'Backend reports model not loaded. Check the Flask model paths.' : 'Backend did not report model readiness. Add explicit model flags to /status.')
           } catch (error) { for (const key of ['network', 'server', 'sashibocore', 'tailcut']) set(key, 'error', message(error)) }
+          if (!piReachable) {
+            set('camera', 'error', 'Pi unreachable — connect to TunaRPi Wi-Fi to grade, or use DroidCam / Upload once connected.')
+            return
+          }
+          try {
+            const blob = await capturePiImage()
+            const bitmap = await createImageBitmap(blob)
+            const dimensions = `${bitmap.width} × ${bitmap.height}`
+            bitmap.close()
+            set('camera', 'ready', `Received a decodable camera image (${dimensions}).`)
+          } catch (error) {
+            set('camera', 'error', `${message(error)} — No Pi USB camera signal. Continue with DroidCam URL (:4747), browser camera, or image upload.`)
+          }
         })(),
-        (async () => { try { const blob = await capturePiImage(); const bitmap = await createImageBitmap(blob); const dimensions = `${bitmap.width} × ${bitmap.height}`; bitmap.close(); set('camera', 'ready', `Received a decodable camera image (${dimensions}).`) } catch (error) { set('camera', 'error', `${message(error)} — You can still continue with DroidCam, browser camera, or image upload.`) } })(),
         (async () => { try { const detail = await storageCheck(); set('storage', 'ready', detail) } catch (error) { set('storage', 'error', message(error)) } })(),
       ])
       running = false; render()
