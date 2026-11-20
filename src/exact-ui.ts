@@ -335,48 +335,7 @@ const runtime = {
       const highConfidence = result.confidence !== null && result.confidence >= ACCEPT_CONFIDENCE && Boolean(result.grade)
       const lowSashiboGrade = result.grade === 'C'
       if (key === 'core' && (!highConfidence || lowSashiboGrade)) {
-        const d = w.document
-        d.getElementById('tail-avail-modal')?.remove()
-        const overlay = d.createElement('div'); overlay.className = 'ovl'; overlay.id = 'tail-avail-modal'
-        const reasonBadge = !highConfidence
-          ? `Confidence below ${ACCEPT_CONFIDENCE}% (${result.confidence ?? '—'}%)`
-          : `Low Sashibo Grade (Grade C · ${result.confidence ?? '—'}%) — Verify with Tail-Cut`
-        const chipBg = '#fff4db', chipFg = '#925800'
-        const sashiboSvg = `<svg width="64" height="44" viewBox="0 0 64 44" fill="none" aria-hidden="true"><rect x="2" y="10" width="60" height="24" rx="8" fill="#fff1f0" stroke="#f5c2c0" stroke-width="1.5"/><path d="M10 22C20 18 44 26 54 21" stroke="#dc2626" stroke-width="5" stroke-linecap="round"/><circle cx="14" cy="22" r="2.5" fill="#991b1b"/></svg>`
-        const tailSvg = `<svg width="64" height="44" viewBox="0 0 64 44" fill="none" aria-hidden="true"><rect x="2" y="4" width="60" height="36" rx="10" fill="#eef5ff" stroke="#bfd6ff" stroke-width="1.5"/><ellipse cx="32" cy="22" rx="18" ry="12" fill="#ef4444" stroke="#fca5a5" stroke-width="2"/><ellipse cx="32" cy="22" rx="10" ry="6" fill="#dc2626" stroke="#fecaca" stroke-width="1.2" stroke-dasharray="3 2"/><circle cx="32" cy="22" r="2.5" fill="#fff"/></svg>`
-        overlay.innerHTML = `<section class="sheet" role="dialog" aria-modal="true" aria-labelledby="ta-title" style="width:min(520px,95%);padding:24px;border-radius:26px;background:#fff;color:#182842;font-family:Inter,system-ui,sans-serif;box-shadow:0 24px 60px -16px rgba(11,26,58,.28)">
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:10px">
-            <span style="display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:999px;background:${chipBg};color:${chipFg};font-size:12px;font-weight:700">Sashibo Core · Grade ${result.grade ?? '—'} · ${result.confidence ?? '—'}%</span>
-            <span style="font-size:11.5px;font-weight:700;color:#b45309">${reasonBadge}</span>
-          </div>
-          <h2 id="ta-title" style="margin:0 0 14px;font-size:22px;letter-spacing:-.025em;line-height:1.2">Is a Tail-Cut sample available?</h2>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
-            <div style="padding:12px;border-radius:16px;background:#fff9f5;border:1px solid #fde2c8;display:flex;align-items:center;gap:10px">
-              ${sashiboSvg}
-              <div><div style="font-size:11px;font-weight:700;color:#9a3412;text-transform:uppercase">1. Sashibo Core</div><div style="font-size:13px;font-weight:800;color:#182842">Grade ${result.grade ?? '—'} (${result.confidence ?? '—'}%)</div><div style="font-size:11px;color:#64748b">${!highConfidence ? `Under ${ACCEPT_CONFIDENCE}%` : 'Low grade (Grade C)'}</div></div>
-            </div>
-            <div style="padding:12px;border-radius:16px;background:#f4f8ff;border:1px solid #d5e4ff;display:flex;align-items:center;gap:10px">
-              ${tailSvg}
-              <div><div style="font-size:11px;font-weight:700;color:#1d4ed8;text-transform:uppercase">2. Tail-Cut Face</div><div style="font-size:13px;font-weight:800;color:#182842">2nd Check</div><div style="font-size:11px;color:#64748b">Combines both</div></div>
-            </div>
-          </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-            <button type="button" id="ta-yes" style="width:100%;height:48px;border-radius:999px;border:0;background:linear-gradient(135deg,#3b8bff,#1d5ef0);color:#fff;font:600 14.5px Inter,system-ui,sans-serif;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;text-align:center;box-shadow:0 10px 24px -10px rgba(33,89,232,.65)">Scan Tail-Cut</button>
-            <button type="button" id="ta-no" style="width:100%;height:48px;border-radius:999px;border:1px solid #d7e2f4;background:#f5f8ff;color:#182842;font:600 14.5px Inter,system-ui,sans-serif;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;text-align:center">No Tail-Cut</button>
-          </div>
-        </section>`
-          ; (d.getElementById('stage') ?? d.body).append(overlay)
-        overlay.querySelector<HTMLButtonElement>('#ta-yes')!.onclick = () => {
-          overlay.remove()
-          session = reducer(session, { type: 'setTailAvailability', value: 'available' })
-          go('tail')
-        }
-        overlay.querySelector<HTMLButtonElement>('#ta-no')!.onclick = () => {
-          overlay.remove()
-          session = reducer(session, { type: 'setTailAvailability', value: 'not_available' })
-          if (!isDemoMode()) persist(w)
-          go('final')
-        }
+        go('tailneed')
         if (saveMessage) toast(saveMessage)
         return
       }
@@ -718,6 +677,75 @@ const runtime = {
             activeRateBox.querySelectorAll<HTMLElement>('b,span').forEach(el => el.style.setProperty('color', '#fff', 'important'))
           }
         }
+        if (S.scr === 'tailneed') {
+          const coreRes = session.results['Sashibo core']
+          const c = coreRes?.originalConfidence ?? S.core ?? 0
+          const g = coreRes?.originalGrade ?? 'B'
+          const lowConf = Number(c) < ACCEPT_CONFIDENCE
+          const em = d.querySelector<HTMLElement>('.gauge-c em')
+          if (em) em.textContent = lowConf ? `Grade ${g} · Under ${ACCEPT_CONFIDENCE}%` : `Grade ${g} · Verify with Tail-Cut`
+          const badge = d.querySelector<HTMLElement>('.ph5[data-zoom="core"] .v5sc')
+          if (badge && coreRes?.originalGrade) {
+            badge.textContent = `Grade ${coreRes.originalGrade} · ${Number(c).toFixed(1)}%`
+          }
+          const ins = d.querySelector<HTMLElement>('.ins5')
+          if (ins) {
+            ins.innerHTML = lowConf
+              ? `Sashibo Core is <b>Grade ${g} (${Number(c).toFixed(1)}%)</b> — below the <b>${ACCEPT_CONFIDENCE}%</b> confidence threshold.<span>Scan the Tail-Cut face to combine both model predictions.</span>`
+              : `Sashibo Core is <b>Grade C (${Number(c).toFixed(1)}%)</b> — lowest quality tier.<span>Scan the Tail-Cut face to verify or lift the combined fish grade.</span>`
+          }
+          const kLabel = d.querySelectorAll<HTMLElement>('.nx5 .t5k')[1]
+          if (kLabel) kLabel.textContent = lowConf ? 'Confidence threshold' : '2nd verification'
+          const nx5n = d.querySelector<HTMLElement>('.nx5n')
+          if (nx5n) nx5n.textContent = lowConf ? `≥ ${ACCEPT_CONFIDENCE}%` : 'Lift to B / A'
+          const goBtn = d.getElementById('go') as HTMLButtonElement | null
+          if (goBtn) {
+            goBtn.onclick = () => {
+              d.getElementById('tail-avail-modal')?.remove()
+              const overlay = d.createElement('div'); overlay.className = 'ovl'; overlay.id = 'tail-avail-modal'
+              const reasonBadge = lowConf
+                ? `Confidence below ${ACCEPT_CONFIDENCE}% (${Number(c).toFixed(1)}%)`
+                : `Low Sashibo Grade (Grade C · ${Number(c).toFixed(1)}%) — Verify with Tail-Cut`
+              const chipBg = '#fff4db', chipFg = '#925800'
+              const sashiboSvg = `<svg width="64" height="44" viewBox="0 0 64 44" fill="none" aria-hidden="true"><rect x="2" y="10" width="60" height="24" rx="8" fill="#fff1f0" stroke="#f5c2c0" stroke-width="1.5"/><path d="M10 22C20 18 44 26 54 21" stroke="#dc2626" stroke-width="5" stroke-linecap="round"/><circle cx="14" cy="22" r="2.5" fill="#991b1b"/></svg>`
+              const tailSvg = `<svg width="64" height="44" viewBox="0 0 64 44" fill="none" aria-hidden="true"><rect x="2" y="4" width="60" height="36" rx="10" fill="#eef5ff" stroke="#bfd6ff" stroke-width="1.5"/><ellipse cx="32" cy="22" rx="18" ry="12" fill="#ef4444" stroke="#fca5a5" stroke-width="2"/><ellipse cx="32" cy="22" rx="10" ry="6" fill="#dc2626" stroke="#fecaca" stroke-width="1.2" stroke-dasharray="3 2"/><circle cx="32" cy="22" r="2.5" fill="#fff"/></svg>`
+              overlay.innerHTML = `<section class="sheet" role="dialog" aria-modal="true" aria-labelledby="ta-title" style="width:min(520px,95%);padding:24px;border-radius:26px;background:#fff;color:#182842;font-family:Inter,system-ui,sans-serif;box-shadow:0 24px 60px -16px rgba(11,26,58,.28)">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+                  <span style="display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:999px;background:${chipBg};color:${chipFg};font-size:12px;font-weight:700">Sashibo Core · Grade ${g} · ${Number(c).toFixed(1)}%</span>
+                  <span style="font-size:11.5px;font-weight:700;color:#b45309">${reasonBadge}</span>
+                </div>
+                <h2 id="ta-title" style="margin:0 0 14px;font-size:22px;letter-spacing:-.025em;line-height:1.2">Is a Tail-Cut sample available?</h2>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
+                  <div style="padding:12px;border-radius:16px;background:#fff9f5;border:1px solid #fde2c8;display:flex;align-items:center;gap:10px">
+                    ${sashiboSvg}
+                    <div><div style="font-size:11px;font-weight:700;color:#9a3412;text-transform:uppercase">1. Sashibo Core</div><div style="font-size:13px;font-weight:800;color:#182842">Grade ${g} (${Number(c).toFixed(1)}%)</div><div style="font-size:11px;color:#64748b">${lowConf ? `Under ${ACCEPT_CONFIDENCE}%` : 'Low grade (Grade C)'}</div></div>
+                  </div>
+                  <div style="padding:12px;border-radius:16px;background:#f4f8ff;border:1px solid #d5e4ff;display:flex;align-items:center;gap:10px">
+                    ${tailSvg}
+                    <div><div style="font-size:11px;font-weight:700;color:#1d4ed8;text-transform:uppercase">2. Tail-Cut Face</div><div style="font-size:13px;font-weight:800;color:#182842">2nd Check</div><div style="font-size:11px;color:#64748b">Combines both</div></div>
+                  </div>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+                  <button type="button" id="ta-yes" style="width:100%;height:48px;border-radius:999px;border:0;background:linear-gradient(135deg,#3b8bff,#1d5ef0);color:#fff;font:600 14.5px Inter,system-ui,sans-serif;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;text-align:center;box-shadow:0 10px 24px -10px rgba(33,89,232,.65)">Scan Tail-Cut</button>
+                  <button type="button" id="ta-no" style="width:100%;height:48px;border-radius:999px;border:1px solid #d7e2f4;background:#f5f8ff;color:#182842;font:600 14.5px Inter,system-ui,sans-serif;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;text-align:center">No Tail-Cut</button>
+                </div>
+              </section>`
+              overlay.onclick = ev => { if (ev.target === overlay) overlay.remove() }
+              ;(d.getElementById('stage') ?? d.body).append(overlay)
+              overlay.querySelector<HTMLButtonElement>('#ta-yes')!.onclick = () => {
+                overlay.remove()
+                session = reducer(session, { type: 'setTailAvailability', value: 'available' })
+                api(w).go('tail')
+              }
+              overlay.querySelector<HTMLButtonElement>('#ta-no')!.onclick = () => {
+                overlay.remove()
+                session = reducer(session, { type: 'setTailAvailability', value: 'not_available' })
+                if (!isDemoMode()) persist(w)
+                api(w).go('final')
+              }
+            }
+          }
+        }
         if (S.scr === 'final') {
           const button = d.getElementById('go')!
           const chip = d.querySelector('.v5h1 .v5c')
@@ -823,7 +851,7 @@ const runtime = {
                 sysKey: 'models',
                 title: 'Smart 75% Tail-Cut Rule, Grade-Colored Cards & Auto Camera Reset',
                 v2Base: 'Asked for a Tail-Cut on every scan, used white grade cards, and showed a small toast message on non-tuna photos.',
-                improved: 'Only asks for Tail-Cut when confidence is below 75% (or Grade C), colors the card Green (A), Yellow (B), Red (C), or Black (Override), and auto-resets the camera in 2s if the photo is invalid.'
+                improved: 'Only asks for Tail-Cut when confidence is below 75%, colors the card Green (A), Yellow (B), Red (C), or Black (Override), and auto-resets the camera in 2s if the photo is invalid.'
               },
               {
                 hash: 'v2.6.1',
@@ -986,7 +1014,7 @@ const runtime = {
                 pillTag(modelsOk, modelsOk ? 'AI Models: Loaded' : 'AI Models: Standby'),
                 pillTag(Boolean(btName), btName ? `Printer: ${btName}` : 'Printer: System / BT Ready'),
                 pillTag(cloudOk, cloudOk ? 'Cloud: Connected' : `Local Storage (${recordsCount} records)`),
-                `<span style="padding:3px 9px;border-radius:999px;background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8;font-weight:700">Tail-Cut Rule: &lt;${ACCEPT_CONFIDENCE}% or Grade C</span>`
+                `<span style="padding:3px 9px;border-radius:999px;background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8;font-weight:700">Tail-Cut Rule: &lt;${ACCEPT_CONFIDENCE}%</span>`
               ].join('')
               const dot = d.getElementById('te-ver-dot')
               const lbl = d.getElementById('te-ver-lbl')
@@ -1313,9 +1341,15 @@ const runtime = {
             rk.style.cssText = `display:inline-flex;align-items:center;gap:8px;height:30px;padding:0 13px;border-radius:99px;background:#fff;border:1px solid #dbe6fa;font-size:12.5px;font-weight:700;color:#1e293b;box-shadow:0 4px 12px -4px rgba(37,99,235,.15)`
           }
           if (rsum) {
-            rsum.style.cssText = `margin-top:14px;padding:18px 20px;border-radius:26px;background:${bg};border:1.5px solid ${border};color:#fff;box-shadow:0 22px 48px -18px rgba(15,23,42,.35)`
+            rsum.style.cssText = 'margin-top:14px;padding:18px 20px;border-radius:26px;box-shadow:0 22px 48px -18px rgba(15,23,42,.35)'
+            rsum.style.setProperty('background', bg, 'important')
+            rsum.style.setProperty('border', `1.5px solid ${border}`, 'important')
+            rsum.style.setProperty('color', '#fff', 'important')
             if (rtile) {
-              rtile.style.cssText = 'width:78px;height:78px;flex:none;border-radius:22px;display:grid;place-items:center;font-size:50px;font-weight:900;letter-spacing:-.04em;background:rgba(255,255,255,.22);border:1.5px solid rgba(255,255,255,.5);color:#fff'
+              rtile.style.cssText = 'width:78px;height:78px;flex:none;border-radius:22px;display:grid;place-items:center;font-size:50px;font-weight:900;letter-spacing:-.04em'
+              rtile.style.setProperty('background', 'rgba(255,255,255,.22)', 'important')
+              rtile.style.setProperty('border', '1.5px solid rgba(255,255,255,.5)', 'important')
+              rtile.style.setProperty('color', '#fff', 'important')
             }
             const confVal = decision.confidence ?? coreRes?.originalConfidence ?? null
             const rsumT = rsum.querySelector<HTMLElement>('.rsum-t')
@@ -1330,9 +1364,14 @@ const runtime = {
               el.style.setProperty('color', '#fff', 'important')
             })
             const ramt = rsum.querySelector<HTMLElement>('.ramt')
-            if (ramt) ramt.style.cssText = 'font-size:40px;font-weight:900;letter-spacing:-.04em;line-height:1.05;color:#fff'
+            if (ramt) {
+              ramt.style.cssText = 'font-size:40px;font-weight:900;letter-spacing:-.04em;line-height:1.05'
+              ramt.style.setProperty('color', '#fff', 'important')
+            }
             rsum.querySelectorAll<HTMLElement>('.rsum-r > div').forEach(cell => {
-              cell.style.cssText = 'flex:1;min-width:0;padding:9px 13px;border-radius:14px;background:rgba(0,0,0,.22);border:1px solid rgba(255,255,255,.24)'
+              cell.style.cssText = 'flex:1;min-width:0;padding:9px 13px;border-radius:14px'
+              cell.style.setProperty('background', 'rgba(0,0,0,.22)', 'important')
+              cell.style.setProperty('border', '1px solid rgba(255,255,255,.24)', 'important')
             })
             const ow = d.querySelector<HTMLElement>('.rcv .ow')
             if (ow) ow.style.cssText = 'left:735px;bottom:14px'
@@ -1594,7 +1633,7 @@ export function launchExactUI(showBootDial = true) {
   html = html.replace('pin:p=>p===\'1234\'', 'pin:p=>window.top.TunaEyeRuntime.pin(p,window)').replace('print:async()=>true', 'print:async()=>window.top.TunaEyeRuntime.print(window)')
   html = html.replace('S.hist=ok?L:seedHist()', 'S.hist=[]').replace("S.cfg.demo=localStorage.getItem('te-demo')!=='0'", 'S.cfg.demo=false')
   html = html.replace("setTimeout(()=>{if(S.scr==='receipt')printIt(fin)},650)", "const receiptPrintButton=$('#orb');setTimeout(()=>{if(S.scr==='receipt'&&$('#orb')===receiptPrintButton&&window.top.TunaEyeRuntime.hasBtPrinter&&window.top.TunaEyeRuntime.hasBtPrinter())printIt(fin)},700)")
-  html = html.replaceAll('</head>', '<style>@media(pointer:coarse),(max-width:1366px){*,*:before,*:after{backdrop-filter:none!important;-webkit-backdrop-filter:none!important}.scr,.scr>*,.v5row>*,.ltvf,.ltside,.v5h,.med5-l,.med5:before,.gg5:before,.dhero,.dhero:before,.dsc,.dsr,.drow,.rcr,tr.r,.st,.vs,.sp5,.wl-pill i,.wl-cta i:after,.orb:after,.shut-r:after,.hb,.lb,.sc5,.beam,.lt-beam,.sbeam,.ret u,.chk i,.rk i,.lt-chip i,.dsc.ok b:before,.tp-dots,.tp-halo,.tp-bub,.tp-mv,.tp-ping:before,.tp-ping:after,.tp-gd i,.tp-scan,.tp-flash,.tp-chip,.fx{animation:none!important;transition:none!important}.wl-nav,.wl-band span{background:rgba(8,30,84,.82)!important}.lt .xs2,.ltside,.lt .g5,.dsc,.dsr,.rsum,.dbk,.lt-chip{background:#ffffff!important}.coach{background:rgba(6,18,48,.94)!important}#stage{box-shadow:none!important}}</style></head>')
+  html = html.replaceAll('</head>', '<style>@media(pointer:coarse),(max-width:1366px){*,*:before,*:after{backdrop-filter:none!important;-webkit-backdrop-filter:none!important}.scr,.scr>*,.v5row>*,.ltvf,.ltside,.v5h,.med5-l,.med5:before,.gg5:before,.dhero,.dhero:before,.dsc,.dsr,.drow,.rcr,tr.r,.st,.vs,.sp5,.wl-pill i,.wl-cta i:after,.orb:after,.shut-r:after,.hb,.lb,.sc5,.beam,.lt-beam,.sbeam,.ret u,.chk i,.rk i,.lt-chip i,.dsc.ok b:before,.tp-dots,.tp-halo,.tp-bub,.tp-mv,.tp-ping:before,.tp-ping:after,.tp-gd i,.tp-scan,.tp-flash,.tp-chip,.fx{animation:none!important;transition:none!important}.wl-nav,.wl-band span{background:rgba(8,30,84,.82)!important}.lt .xs2,.ltside,.lt .g5:not(.med5),.dsc,.dsr,.dbk,.lt-chip{background:#ffffff!important}.coach{background:rgba(6,18,48,.94)!important}#stage{box-shadow:none!important}}</style></head>')
   document.documentElement.style.cssText = 'height:100%;background:#06163a'
   document.body.style.cssText = 'margin:0;height:100dvh;overflow:hidden;background:#06163a'
   const isDirectKiosk = (() => {
