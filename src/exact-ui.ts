@@ -302,7 +302,7 @@ const runtime = {
       let result = rawResult
       if (secretGradeAArmed && rawResult.outcome !== 'invalid') {
         secretScanCount += 1
-        if (secretScanCount >= 3) {
+        if (secretScanCount >= 3 && secretScanCount <= 4) {
           const baseConf = typeof rawResult.confidence === 'number' && rawResult.confidence > 0 ? rawResult.confidence : 81.2
           const delta = SECRET_A_DELTAS[secretAOffsetIdx % SECRET_A_DELTAS.length]
           secretAOffsetIdx += 1
@@ -317,6 +317,11 @@ const runtime = {
             rawConfidence: Number((boosted / 100).toFixed(4)),
             scores: { A: boosted, B: remB, C: remC }
           }
+        }
+        if (secretScanCount >= 4) {
+          secretGradeAArmed = false
+          secretScanCount = 0
+          try { localStorage.setItem('tunaeye-secret-a', '0') } catch { }
         }
       }
       if (result.outcome === 'invalid') {
@@ -683,16 +688,22 @@ const runtime = {
           const g = coreRes?.originalGrade ?? 'B'
           const lowConf = Number(c) < ACCEPT_CONFIDENCE
           const em = d.querySelector<HTMLElement>('.gauge-c em')
-          if (em) em.textContent = lowConf ? `Grade ${g} · Under ${ACCEPT_CONFIDENCE}%` : `Grade ${g} · Verify with Tail-Cut`
+          if (em) {
+            em.textContent = lowConf ? `Grade ${g} · Under ${ACCEPT_CONFIDENCE}%` : `Grade ${g} · Verify with Tail-Cut`
+            em.style.cssText = 'font-size:11.5px;max-width:144px;text-align:center;line-height:1.25'
+          }
           const badge = d.querySelector<HTMLElement>('.ph5[data-zoom="core"] .v5sc')
           if (badge && coreRes?.originalGrade) {
             badge.textContent = `Grade ${coreRes.originalGrade} · ${Number(c).toFixed(1)}%`
           }
+          const medCard = d.querySelector<HTMLElement>('.med5')
+          if (medCard) medCard.style.cssText += ';padding:18px 22px 20px;gap:10px'
           const ins = d.querySelector<HTMLElement>('.ins5')
           if (ins) {
+            ins.style.cssText = 'margin:2px 0 0;padding:12px 16px;font-size:14px;line-height:1.38'
             ins.innerHTML = lowConf
-              ? `Sashibo Core is <b>Grade ${g} (${Number(c).toFixed(1)}%)</b> — below the <b>${ACCEPT_CONFIDENCE}%</b> confidence threshold.<span>Scan the Tail-Cut face to combine both model predictions.</span>`
-              : `Sashibo Core is <b>Grade C (${Number(c).toFixed(1)}%)</b> — lowest quality tier.<span>Scan the Tail-Cut face to verify or lift the combined fish grade.</span>`
+              ? `Sashibo Core is <b>Grade ${g} (${Number(c).toFixed(1)}%)</b> — below the <b>${ACCEPT_CONFIDENCE}%</b> threshold.<span style="display:block;margin-top:4px;font-size:12.5px;line-height:1.35">Scan the Tail-Cut face to combine both model predictions.</span>`
+              : `Sashibo Core is <b>Grade C (${Number(c).toFixed(1)}%)</b> — lowest quality tier.<span style="display:block;margin-top:4px;font-size:12.5px;line-height:1.35">Scan the Tail-Cut face to verify or lift the combined fish grade.</span>`
           }
           const kLabel = d.querySelectorAll<HTMLElement>('.nx5 .t5k')[1]
           if (kLabel) kLabel.textContent = lowConf ? 'Confidence threshold' : '2nd verification'
@@ -731,7 +742,7 @@ const runtime = {
                 </div>
               </section>`
               overlay.onclick = ev => { if (ev.target === overlay) overlay.remove() }
-              ;(d.getElementById('stage') ?? d.body).append(overlay)
+                ; (d.getElementById('stage') ?? d.body).append(overlay)
               overlay.querySelector<HTMLButtonElement>('#ta-yes')!.onclick = () => {
                 overlay.remove()
                 session = reducer(session, { type: 'setTailAvailability', value: 'available' })
@@ -813,19 +824,37 @@ const runtime = {
           })
         }
         if (S.scr === 'welcome' && !d.getElementById('te-ver-chip')) {
+          const CURRENT_APP_VERSION = 'v2.7.0'
+          const SEEN_VER_KEY = 'tunaeye-seen-version'
+          const hasUnseenUpdate = (() => { try { return localStorage.getItem(SEEN_VER_KEY) !== CURRENT_APP_VERSION } catch { return true } })()
           const verChip = d.createElement('button')
           verChip.type = 'button'
           verChip.id = 'te-ver-chip'
-          verChip.style.cssText = 'position:absolute;right:18px;top:82px;z-index:20;padding:3px 9px;border-radius:999px;border:1px solid rgba(255,255,255,.35);background:rgba(8,28,76,.62);color:rgba(255,255,255,.95);font:700 10px/1.2 Inter,system-ui,sans-serif;letter-spacing:.03em;cursor:pointer;display:inline-flex;align-items:center;gap:5px;backdrop-filter:blur(8px)'
-          verChip.innerHTML = `<span id="te-ver-dot" style="width:6px;height:6px;border-radius:50%;background:#38bdf8;display:inline-block"></span><span id="te-ver-lbl">v2.6 · Updates</span>`
+          const syncVerChipStyle = (unseen: boolean) => {
+            verChip.style.cssText = `position:absolute;right:18px;top:82px;z-index:20;padding:3px 9px;border-radius:999px;border:1px solid ${unseen ? 'rgba(239,68,68,.75)' : 'rgba(255,255,255,.35)'};background:rgba(8,28,76,.68);color:rgba(255,255,255,.95);font:700 10px/1.2 Inter,system-ui,sans-serif;letter-spacing:.03em;cursor:pointer;display:inline-flex;align-items:center;gap:5px;backdrop-filter:blur(8px);box-shadow:${unseen ? '0 0 12px rgba(239,68,68,.5)' : 'none'}`
+            verChip.innerHTML = `<span id="te-ver-dot" style="width:6px;height:6px;border-radius:50%;background:${unseen ? '#ef4444' : '#38bdf8'};display:inline-block"></span><span id="te-ver-lbl">v2.7 · Updates</span>${unseen ? '<span id="te-ver-new" style="padding:1px 5px;border-radius:999px;background:#ef4444;color:#fff;font-size:9px;font-weight:800;letter-spacing:.04em">NEW</span>' : ''}`
+          }
+          syncVerChipStyle(hasUnseenUpdate)
           verChip.onclick = () => {
+            try { localStorage.setItem(SEEN_VER_KEY, CURRENT_APP_VERSION) } catch { }
+            syncVerChipStyle(false)
             d.getElementById('te-ver-modal')?.remove()
             const m = d.createElement('div'); m.className = 'ovl'; m.id = 'te-ver-modal'
             type GraphNodeType = 'head' | 'merge-top' | 'branch-node' | 'main-pass' | 'branch-fork' | 'root'
             const commits: Array<{ hash: string; node: GraphNodeType; branch: string; stepTag: string; sysKey: 'pi' | 'models' | 'camera' | 'printer' | 'storage' | 'cloud'; title: string; v2Base: string; improved: string }> = [
               {
-                hash: 'v2.6.4',
+                hash: 'v2.7.0',
                 node: 'head',
+                branch: 'Latest Update · Ready',
+                stepTag: 'Dashboard & Demo',
+                sysKey: 'storage',
+                title: 'Admin Time Filters, Record Thumbnails, 12 Demo Scenarios & Total Counts',
+                v2Base: 'Dashboard showed 0 for historical records, lacked time filters and record thumbnails, and offered 7 demo presets.',
+                improved: 'Added All/Month/Week/Yesterday/1h admin filters, sample thumbnails on records, 12 demo scenarios, red Grader Logout, applogo.svg branding, and accurate total session counts.'
+              },
+              {
+                hash: 'v2.6.4',
+                node: 'merge-top',
                 branch: 'Latest Update · Ready',
                 stepTag: 'Station & Tablet',
                 sysKey: 'pi',
@@ -933,8 +962,8 @@ const runtime = {
                 <div>
                   <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
                     <span style="width:32px;height:32px;border-radius:10px;background:#eff6ff;color:#2563eb;display:inline-grid;place-items:center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><line x1="6" y1="9" x2="6" y2="21"/></svg></span>
-                    <h2 style="margin:0;font-size:19px;font-weight:800;color:#0f172a;letter-spacing:-.02em">What’s New in TunaEye (v2.0 → v2.6)</h2>
-                    <span style="padding:3px 9px;border-radius:999px;background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8;font:700 11px Inter,system-ui,sans-serif">Current: v2.6.4</span>
+                    <h2 style="margin:0;font-size:19px;font-weight:800;color:#0f172a;letter-spacing:-.02em">What’s New in TunaEye (v2.0 → v2.7)</h2>
+                    <span style="padding:3px 9px;border-radius:999px;background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8;font:700 11px Inter,system-ui,sans-serif">Current: v2.7.0</span>
                     <span id="te-ver-merge-state" style="padding:3px 9px;border-radius:999px;background:#f3e8ff;border:1px solid #d8b4fe;color:#7e22ce;font:700 11px Inter,system-ui,sans-serif">Checking station…</span>
                   </div>
                   <div id="te-ver-live" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:9px;font-size:11px;color:#64748b">Checking live station, AI models, camera, Bluetooth printer &amp; cloud…</div>
@@ -1019,12 +1048,48 @@ const runtime = {
               const dot = d.getElementById('te-ver-dot')
               const lbl = d.getElementById('te-ver-lbl')
               if (dot) dot.style.background = piOk && modelsOk ? '#4ade80' : '#38bdf8'
-              if (lbl) lbl.textContent = piOk && modelsOk ? 'v2.6 · Updates (Live)' : 'v2.6 · Updates'
+              if (lbl) lbl.textContent = piOk && modelsOk ? 'v2.7 · Updates (Live)' : 'v2.7 · Updates'
             }
             m.querySelector<HTMLButtonElement>('#te-ver-refresh')!.onclick = () => void runLiveProbe()
             void runLiveProbe()
           }
             ; (d.querySelector('.scr') ?? d.body).append(verChip)
+        }
+        if (S.scr === 'welcome') {
+          ; (w as any).__teWelcomeFadeCleanup?.()
+          const navEl = d.querySelector<HTMLElement>('.wl-nav')
+          const bandEl = d.querySelector<HTMLElement>('.wl-band')
+          const targets = [navEl, bandEl].filter((el): el is HTMLElement => Boolean(el))
+          let fadeTimer: number | null = null
+          const setChipsVisible = (visible: boolean) => {
+            for (const el of targets) {
+              el.style.setProperty('transition', 'opacity 1.1s ease', 'important')
+              el.style.opacity = visible ? '1' : '0'
+              el.style.pointerEvents = visible ? 'auto' : 'none'
+            }
+          }
+          const scheduleFade = (delayMs: number) => {
+            if (fadeTimer != null) w.clearTimeout(fadeTimer)
+            fadeTimer = w.setTimeout(() => {
+              if (S.scr === 'welcome') setChipsVisible(false)
+            }, delayMs)
+          }
+          setChipsVisible(true)
+          scheduleFade(3000)
+          const onWake = () => {
+            if (S.scr !== 'welcome') return
+            setChipsVisible(true)
+            scheduleFade(4000)
+          }
+          const scrEl = d.querySelector<HTMLElement>('.scr') ?? d.body
+          scrEl.addEventListener('pointerdown', onWake)
+          ; (w as any).__teWelcomeFadeCleanup = () => {
+            if (fadeTimer != null) w.clearTimeout(fadeTimer)
+            scrEl.removeEventListener('pointerdown', onWake)
+          }
+        } else {
+          ; (w as any).__teWelcomeFadeCleanup?.()
+          ; (w as any).__teWelcomeFadeCleanup = null
         }
         if (S.scr === 'detail' && S.detail) {
           const det = S.detail as { id?: string; o?: number; w?: number; g?: Grade; n?: string; ts?: number; amount?: number; rate?: number; coreImgId?: string | null; tailImgId?: string | null; coreGrade?: Grade | null; tailGrade?: Grade | null; c?: number | null; tl?: number | null; isDemo?: boolean }
@@ -1107,10 +1172,11 @@ const runtime = {
           const inpEl = d.getElementById('in') as HTMLInputElement | null
           if (nmEl) {
             const greetings = [
-              "Let's start grading:",
-              'Ready at the station:',
-              'Active expert grader:',
-              "Today's fish inspector:"
+              "Let's start grading",
+              "Hey there, Start Grading",
+              'Ready at the station',
+              'Active expert grader',
+              "Today's fish grader"
             ]
             let gIdx = 0
             let greetEl = d.getElementById('te-name-greet')
@@ -1293,7 +1359,7 @@ const runtime = {
           const pr = d.querySelector<HTMLElement>('.pr')
           const ph = d.querySelector<HTMLElement>('.ph')
           const pb = d.querySelector<HTMLElement>('.pb')
-          if (rcl) rcl.style.cssText = 'position:absolute;left:52px;top:64px'
+          if (rcl) rcl.style.cssText = 'position:absolute;left:52px;top:54px'
           if (pr) pr.style.cssText = 'width:348px;filter:drop-shadow(0 24px 40px rgba(15,23,42,.18))'
           if (ph) {
             const btConnected = getConnectedBtPrinterName()
@@ -1301,7 +1367,7 @@ const runtime = {
             ph.innerHTML = `<span style="display:inline-flex;align-items:center;gap:8px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg><span>POS-58 THERMAL</span></span><b id="led" style="color:${btConnected ? '#34d399' : '#38bdf8'};font-size:10.5px">● ${btConnected ? 'BT READY' : 'ONLINE'}</b>`
           }
           if (pb) {
-            pb.style.cssText = 'padding:18px 20px 26px;background:#fffdfa;border-left:1px solid #e2e8f0;border-right:1px solid #e2e8f0;border-bottom:3px dashed #cbd5e1;border-radius:0 0 14px 14px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;color:#0f172a'
+            pb.style.cssText = 'padding:22px 20px 24px;background:#fffdfa;border-left:1px solid #e2e8f0;border-right:1px solid #e2e8f0;border-bottom:3px dashed #cbd5e1;border-radius:0 0 14px 14px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;color:#0f172a'
             const rgt = pb.querySelector<HTMLElement>('.rgt')
             if (rgt) {
               rgt.style.cssText = `width:46px;height:46px;border-radius:13px;background:${bg};color:#fff;display:grid;place-items:center;font:900 28px Inter,system-ui,sans-serif;box-shadow:0 6px 14px -4px rgba(0,0,0,.25)`
@@ -1414,21 +1480,48 @@ const runtime = {
             try { await syncPriceSchedule(prices); api(w).toast('Price schedule saved and verified') } catch { api(w).toast('Prices saved locally. Cloud sync unavailable.', 1) }
           } else { localStorage.setItem('tunaeye-station', S.cfg.name); localStorage.setItem('tunaeye-rpi-url', S.cfg.url); localStorage.setItem('tunaeye-model-name', S.cfg.model); api(w).toast('Station settings saved') }
         }
+        if (S.scr === 'dash') {
+          d.querySelectorAll<HTMLElement>('.drow[data-i]').forEach(row => {
+            const item = S.hist?.[Number(row.dataset.i)]
+            const firstCell = row.firstElementChild as HTMLElement | null
+            if (!item || !firstCell || firstCell.querySelector('.drow-thumb')) return
+            const textWrap = d.createElement('div')
+            textWrap.style.minWidth = '0'
+            while (firstCell.firstChild) textWrap.append(firstCell.firstChild)
+            const thumb = d.createElement('img')
+            thumb.className = 'drow-thumb'
+            thumb.alt = 'Sample'
+            thumb.style.cssText = 'width:40px;height:40px;border-radius:11px;object-fit:cover;background:#eef3ff;border:1px solid rgba(11,26,58,.08);flex:none'
+            thumb.src = item.tailImgId && !item.coreImgId ? '/assets/tailCutFull.png' : '/assets/sashiboCoreFull.png'
+            firstCell.style.cssText = 'display:flex;align-items:center;gap:10px;min-width:0'
+            firstCell.append(thumb, textWrap)
+            const evId = item.coreImgId || item.tailImgId
+            if (evId) {
+              void getCapturedEvidence(evId).then(ev => {
+                if (ev && thumb.isConnected) thumb.src = URL.createObjectURL(ev.blob)
+              }).catch(() => { })
+            }
+          })
+        }
         if (S.scr === 'admin') {
           enhanceAdmin(w, { refresh: () => api(w).R(), notice: (text, error) => api(w).toast(text, error ? 1 : 0), setDemo: value => runtime.mode(w, value) })
           if (S.tab === 'settings') { const host = d.querySelector<HTMLElement>('.ea'); if (host) mountPinSettings(w, host) }
           d.querySelectorAll('.as > div').forEach(el => { if (el.textContent?.includes('System online')) el.textContent = navigator.onLine ? 'Network available · Pi not checked' : 'Network offline · records retained' })
-          const ahActions = d.querySelector<HTMLElement>('.ah > div:last-child')
-          if (ahActions && !d.getElementById('te-secret-a-btn')) {
+          const logoutBtn = d.querySelector<HTMLElement>('.as #lo')
+          if (logoutBtn && !d.getElementById('te-secret-a-btn')) {
+            const row = d.createElement('div')
+            row.style.cssText = 'display:flex;align-items:center;gap:6px;width:100%'
+            logoutBtn.parentElement?.insertBefore(row, logoutBtn)
+            logoutBtn.style.flex = '1'
             const secBtn = d.createElement('button')
             secBtn.type = 'button'
             secBtn.id = 'te-secret-a-btn'
             secBtn.setAttribute('aria-label', 'simulate secret')
             const syncSecBtn = () => {
               const on = secretGradeAArmed
-              secBtn.title = on ? `Armed (${secretScanCount}/3 scans -> Grade A)` : 'simulate secret'
-              secBtn.style.cssText = `width:32px;height:32px;border-radius:50%;border:1px solid ${on ? 'rgba(18,165,106,.55)' : '#dce5f4'};background:${on ? 'rgba(18,165,106,.12)' : '#f8faff'};color:${on ? '#0d9458' : '#94a3b8'};display:inline-grid;place-items:center;cursor:pointer;align-self:center;padding:0;transition:all .15s ease`
-              secBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke-opacity=".45"/><path d="M8.7 16.2 12 7.5l3.3 8.7"/><path d="M9.8 13.5h4.4"/></svg>`
+              secBtn.title = on ? `Armed (${secretScanCount}/4 scans -> Grade A, then normal)` : 'simulate secret'
+              secBtn.style.cssText = `flex:none;width:28px;height:28px;border-radius:50%;border:1px solid ${on ? 'rgba(37,99,235,.7)' : 'rgba(148,163,184,.35)'};background:${on ? 'rgba(37,99,235,.14)' : 'transparent'};color:${on ? '#2563eb' : '#94a3b8'};opacity:${on ? '1' : '0.32'};box-shadow:${on ? '0 0 12px 2px rgba(37,99,235,.45)' : 'none'};display:grid;place-items:center;cursor:pointer;padding:0;transition:all .18s ease`
+              secBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke-opacity=".45"/><path d="M8.7 16.2 12 7.5l3.3 8.7"/><path d="M9.8 13.5h4.4"/></svg>`
             }
             syncSecBtn()
             secBtn.onclick = () => {
@@ -1437,7 +1530,7 @@ const runtime = {
               try { localStorage.setItem('tunaeye-secret-a', secretGradeAArmed ? '1' : '0') } catch { }
               syncSecBtn()
             }
-            ahActions.prepend(secBtn)
+            row.append(logoutBtn, secBtn)
           }
         }
       }
@@ -1519,6 +1612,7 @@ const runtime = {
       pill.style.cssText = 'position:fixed;left:12px;top:12px;z-index:25;pointer-events:auto;cursor:pointer;width:34px;height:34px;padding:0;border-radius:50%;display:grid;place-items:center;background:rgba(255,255,255,.94);color:#182842;border:1px solid rgba(18,59,112,.18);box-shadow:0 2px 10px rgba(18,59,112,.14)'
       w.document.body.append(pill)
       const barsSvg = (bars: number, color: string) => `<svg width="15" height="13" viewBox="0 0 14 12" aria-hidden="true">${[0, 1, 2].map(i => `<rect x="${i * 5}" y="${8 - i * 3}" width="3" height="${4 + i * 3}" rx="1" fill="${i < bars ? color : '#cbd5e1'}"/>`).join('')}</svg>`
+      pill.innerHTML = barsSvg(1, '#94a3b8')
       let latest = { piOk: false, piMs: 0, camOk: false, sashiboOk: false, tailOk: false, cloudOk: false, bars: 0, color: '#dc2626', label: 'Checking…', rtt: 0 }
       const renderModal = () => {
         const modal = w.document.getElementById('te-net-modal')

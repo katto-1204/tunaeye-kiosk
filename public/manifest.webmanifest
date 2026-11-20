@@ -14,6 +14,18 @@
   "theme_color": "#2563eb",
   "icons": [
     {
+      "src": "/assets/applogo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/applogo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    },
+    {
       "src": "/tunaeye-192.png",
       "sizes": "192x192",
       "type": "image/png",

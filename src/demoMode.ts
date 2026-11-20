@@ -12,7 +12,19 @@ export function demoCanStart() {
   return demoAvailable || import.meta.env.DEV
 }
 
-export type DemoScenario = 'confident' | 'needs-tail' | 'needs-expert' | 'grade-b' | 'grade-c' | 'invalid-core' | 'invalid-tail'
+export type DemoScenario =
+  | 'confident'
+  | 'needs-tail'
+  | 'core-uncertain-tail-a'
+  | 'core-uncertain-tail-c'
+  | 'no-tail-provisional'
+  | 'borderline-75'
+  | 'needs-expert'
+  | 'tail-uncertain-expert'
+  | 'grade-b'
+  | 'grade-c'
+  | 'invalid-core'
+  | 'invalid-tail'
 
 const scenarioTable: Record<DemoScenario, Record<SampleType, { grade: Grade; confidence: number }>> = {
   confident: {
@@ -23,9 +35,29 @@ const scenarioTable: Record<DemoScenario, Record<SampleType, { grade: Grade; con
     'Sashibo core': { grade: 'C', confidence: 74.2 },
     'Tail cut': { grade: 'B', confidence: 91.4 },
   },
+  'core-uncertain-tail-a': {
+    'Sashibo core': { grade: 'B', confidence: 71.5 },
+    'Tail cut': { grade: 'A', confidence: 93.8 },
+  },
+  'core-uncertain-tail-c': {
+    'Sashibo core': { grade: 'B', confidence: 72.4 },
+    'Tail cut': { grade: 'C', confidence: 89.2 },
+  },
+  'no-tail-provisional': {
+    'Sashibo core': { grade: 'B', confidence: 72.0 },
+    'Tail cut': { grade: 'B', confidence: 72.0 },
+  },
+  'borderline-75': {
+    'Sashibo core': { grade: 'B', confidence: 75.5 },
+    'Tail cut': { grade: 'B', confidence: 88.0 },
+  },
   'needs-expert': {
     'Sashibo core': { grade: 'B', confidence: 68.1 },
     'Tail cut': { grade: 'C', confidence: 66.4 },
+  },
+  'tail-uncertain-expert': {
+    'Sashibo core': { grade: 'A', confidence: 73.2 },
+    'Tail cut': { grade: 'B', confidence: 71.8 },
   },
   'grade-b': { 'Sashibo core': { grade: 'B', confidence: 94 }, 'Tail cut': { grade: 'B', confidence: 94 } },
   'grade-c': { 'Sashibo core': { grade: 'C', confidence: 94 }, 'Tail cut': { grade: 'C', confidence: 94 } },
@@ -37,11 +69,16 @@ let scenario: DemoScenario = 'confident'
 
 export function demoScenarios() {
   return [
-    { id: 'confident' as const, label: 'Sashibo accepts', detail: '96% — print immediately' },
-    { id: 'needs-tail' as const, label: 'Tail cut needed', detail: '74% then 91% — blended grade' },
-    { id: 'needs-expert' as const, label: 'Expert needed', detail: 'Both under 80%' },
-    { id: 'grade-b' as const, label: 'Grade B', detail: 'Confident Grade B' },
-    { id: 'grade-c' as const, label: 'Grade C', detail: 'Confident Grade C' },
+    { id: 'confident' as const, label: 'Sashibo accepts', detail: '96.3% Grade A — print immediately' },
+    { id: 'needs-tail' as const, label: 'Tail cut needed', detail: 'Core 74.2% C -> Tail 91.4% B' },
+    { id: 'core-uncertain-tail-a' as const, label: 'Tail upgrades to A', detail: 'Core 71.5% B -> Tail 93.8% A' },
+    { id: 'core-uncertain-tail-c' as const, label: 'Tail confirms C', detail: 'Core 72.4% B -> Tail 89.2% C' },
+    { id: 'no-tail-provisional' as const, label: 'No tail cut (Provisional)', detail: 'Core 72% B — choose No Tail-Cut' },
+    { id: 'borderline-75' as const, label: 'Borderline 75% pass', detail: '75.5% B — passes without Tail-Cut' },
+    { id: 'needs-expert' as const, label: 'Expert needed', detail: 'Both under 75% — override required' },
+    { id: 'tail-uncertain-expert' as const, label: 'Tail also uncertain', detail: 'Core 73.2% A -> Tail 71.8% B' },
+    { id: 'grade-b' as const, label: 'Grade B', detail: 'Confident Grade B (94%)' },
+    { id: 'grade-c' as const, label: 'Grade C', detail: 'Confident Grade C (94%)' },
     { id: 'invalid-core' as const, label: 'Invalid core', detail: 'Retake required' },
     { id: 'invalid-tail' as const, label: 'Invalid tail cut', detail: 'Supplementary image rejected' },
   ]

@@ -1,5 +1,26 @@
 # Plan
 
+## Kiosk label overlap fixes (2026-11-20)
+
+- [ ] Reproduce overlapping labels and controls in the active exact-HTML kiosk at 1024x600, 1280x800 and 1366x768.
+- [ ] Apply minimal layout fixes to affected screens; preserve all state, grading and button handlers.
+- [ ] Verify real browser flows, label/control geometry, console/network, existing relevant checks and production build.
+
+Scope: active `new ui/index (4).html`, runtime-injected kiosk styles only if needed, and focused regression coverage. Preserve unrelated work, copy meaning and touch accessibility. Plan reviewed: inspect the final CSS cascade and longer runtime labels before selecting changes.
+
+## Project scan for animated demo (2026-11-20)
+
+- [x] Inventory active entry points, source, assets, integrations, tests and existing video projects.
+- [x] Trace current grading, override, receipt, records and admin behavior against implementation.
+- [x] Write `docs/ANIMATED_DEMO_PROJECT_GUIDE.md` with source references, demo storyboard, reusable assets and accuracy boundaries.
+- [x] Verify guide links and key claims against current source; document scan limits and results.
+
+Scope: documentation only. Inspect first-party source and configuration; exclude dependency internals, generated bundles, archives and private environment values. Use the active exact-HTML interface as the current product reference, distinguishing legacy React and older video captures.
+
+Plan review: cover the product story and real workflow, data/hardware contracts, current decision thresholds, production/demo differences, visual identity and existing animation material. No application changes or external writes.
+
+Review: delivered a 4,748-word source-based guide covering the active exact-HTML entry, 75% core-first/provisional/combined decisions, expert review, current camera and 58mm print paths, browser/SQLite/Supabase records, background sync, Admin, asset shelf and older Remotion projects, plus a proposed 120-second storyboard. Flagged stale 80%/manual-only/80mm marketing and test assumptions, partial Android scaffold, conceptual model graphics and the persisted forced-Grade-A control. All 30 Markdown source links resolve; code fences balance; key policy/sync/promotion/700ms print anchors checked directly; git diff whitespace check passed. Documentation only: app/browser tests, actual model/hardware/cloud, Android build and media playback were not run. Existing untracked DECISIONS.md and .claude/ were left untouched.
+
 ## Kiosk stability, offline storage and hardware-flow fixes (2026-11-18)
 
 - [ ] Preserve exact presentation; isolate compact 58mm print document with offline Code128 and paper-height controls.

@@ -1,0 +1,1 @@
+const { chromium } = require('@playwright/test'); const launch = chromium.launch.bind(chromium); chromium.launch = options => launch({ ...options, executablePath: 'C:/Program Files/Google/Chrome/Application/chrome.exe' }); require('./scripts/verify-logout.cjs');
