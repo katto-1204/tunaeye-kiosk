@@ -1527,9 +1527,11 @@ const runtime = {
           const confirmGraderIdentity = (typed: string) => new Promise<string | null>(resolve => {
             const matches = findGraderMatches(typed)
             if (!matches.length) { resolve(typed); return }
+            inpEl?.blur()
             let selectedMatch = matches[0]
             d.getElementById('te-grader-match-modal')?.remove()
             const ov = d.createElement('div'); ov.className = 'ovl'; ov.id = 'te-grader-match-modal'
+            ov.style.cssText = 'align-items:start;justify-items:center;padding-top:26px'
             const renderBody = () => {
               const exact = selectedMatch.name.toLowerCase() === typed.trim().toLowerCase()
               const activity = selectedMatch.lastTs
@@ -1543,13 +1545,16 @@ const runtime = {
                 </div>
                 ${matches.length > 1 ? `<div style="display:flex;gap:8px;flex-wrap:wrap">${matches.map((m, idx) => `<button type="button" class="gm-pick" data-idx="${idx}" style="padding:7px 13px;border-radius:999px;border:1px solid ${m.name === selectedMatch.name ? '#2563eb' : '#dbe4f0'};background:${m.name === selectedMatch.name ? '#eff6ff' : '#f8fafc'};color:${m.name === selectedMatch.name ? '#1d4ed8' : '#334155'};font:700 12.5px Inter,system-ui,sans-serif;cursor:pointer">${m.name.replace(/</g, '&lt;')}</button>`).join('')}</div>` : ''}
                 <div id="gm-init-wrap" style="display:none;gap:8px;padding:12px;border-radius:16px;background:#f8fafc;border:1px solid #e2e8f0">
-                  <label for="gm-init" style="font-size:12.5px;font-weight:700;color:#334155">Add last initial(s) so records stay separate:</label>
+                  <label for="gm-init" style="font-size:12.5px;font-weight:700;color:#334155">Tap last initial(s) so records stay separate:</label>
                   <div style="display:flex;align-items:center;gap:8px">
                     <span style="font-size:15px;font-weight:800;color:#0f172a">${typed.trim().slice(0, 10).replace(/</g, '&lt;')}</span>
-                    <input id="gm-init" maxlength="4" placeholder="H / Ho" autocomplete="off" style="width:82px;height:40px;border-radius:12px;border:1.5px solid #2563eb;text-align:center;font:800 15px Inter,system-ui,sans-serif;color:#0f172a;outline:none" />
+                    <input id="gm-init" inputmode="none" maxlength="4" placeholder="H / Ho" autocomplete="off" style="width:82px;height:40px;border-radius:12px;border:1.5px solid #2563eb;text-align:center;font:800 15px Inter,system-ui,sans-serif;color:#0f172a;outline:none" />
                     <span style="font-size:13px;color:#64748b">.</span>
                   </div>
                   <div id="gm-init-err" style="display:none;font-size:12px;font-weight:600;color:#dc2626"></div>
+                  <div id="gm-init-kb" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:2px">
+                    ${'ABCDEFGHIJKLMNOPQRSTUVWXYZ234⌫'.split('').map(k => `<button type="button" class="gm-key" data-k="${k}" style="min-width:${k === '⌫' ? '44px' : '28px'};height:30px;border-radius:8px;border:1px solid #cbd5e1;background:${k === '⌫' ? '#fee2e2' : '#fff'};color:${k === '⌫' ? '#b91c1c' : '#0f172a'};font:700 12px Inter,system-ui,sans-serif;cursor:pointer;padding:0 6px">${k}</button>`).join('')}
+                  </div>
                 </div>
                 <div id="gm-actions" style="display:grid;grid-template-columns:1fr 1.2fr;gap:10px">
                   <button type="button" id="gm-no" style="height:46px;border-radius:999px;border:1px solid #d7e2f4;background:#f5f8ff;color:#182842;font:600 13.5px Inter,system-ui,sans-serif;cursor:pointer">No, start new</button>
@@ -1563,6 +1568,12 @@ const runtime = {
               const noBtn = ov.querySelector<HTMLButtonElement>('#gm-no')!
               const initWrap = ov.querySelector<HTMLElement>('#gm-init-wrap')!
               const initInput = ov.querySelector<HTMLInputElement>('#gm-init')!
+              ov.querySelectorAll<HTMLButtonElement>('.gm-key').forEach(kBtn => {
+                kBtn.onclick = () => {
+                  const k = kBtn.dataset.k || ''
+                  initInput.value = k === '⌫' ? initInput.value.slice(0, -1) : (initInput.value + k).slice(0, 4)
+                }
+              })
               noBtn.onclick = () => {
                 if (initWrap.style.display === 'none') {
                   initWrap.style.display = 'grid'
