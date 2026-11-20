@@ -64,9 +64,10 @@ async function pruneVerifiedLocalRecords() {
   if (removed.size) saveRecords(records.filter(record => !removed.has(record.id)))
 }
 
-  async function runPendingSync(limit = 50): Promise<SyncSummary> {
+  async function runPendingSync(limit = 50, graders?: string[]): Promise<SyncSummary> {
     if (!isSupabaseConfigured()) throw new Error('Supabase is missing from this build. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY, then redeploy or rebuild the kiosk.')
-    const allPending = loadRecords().filter(record => record.transaction?.syncState !== 'synced')
+    const allowed = graders?.length ? new Set(graders.map(g => g.trim().toLocaleLowerCase())) : null
+    const allPending = loadRecords().filter(record => record.transaction?.syncState !== 'synced' && (!allowed || allowed.has(record.grader.trim().toLocaleLowerCase())))
     const pending = allPending.slice(0, Math.max(1, limit))
     const summary: SyncSummary = { synced: 0, failed: 0, skipped: Math.max(0, allPending.length - pending.length), waiting: 0 }
     if (!pending.length) { emitSyncStatus('synced'); return summary }
@@ -168,8 +169,8 @@ async function pruneVerifiedLocalRecords() {
     return summary
   }
 
-    export function syncPendingRecords(options?: { limit?: number }): Promise<SyncSummary> {
-      activeSync ??= runPendingSync(options?.limit).finally(() => { activeSync = null })
+    export function syncPendingRecords(options?: { limit?: number; graders?: string[] }): Promise<SyncSummary> {
+      activeSync ??= runPendingSync(options?.limit, options?.graders).finally(() => { activeSync = null })
       return activeSync
     }
 

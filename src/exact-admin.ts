@@ -10,7 +10,7 @@ import { isDemoMode } from './demoMode'
 import { mountTechnicalPanel } from './exact-technical'
 
 type Context = { refresh: () => void; notice: (text: string, error?: boolean) => void; setDemo: (enabled: boolean) => void }
-type TimeRange = 'all' | 'month' | 'week' | 'yesterday' | 'hour'
+type TimeRange = 'all' | 'month' | 'week' | 'today' | 'yesterday' | 'hour' | 'older'
 type View = { query: string; page: number; range: TimeRange; cloud: GradingRecord[]; lastCloudSyncAt?: number; syncingCloud?: boolean }
 const views = new WeakMap<Window, View>()
 const esc = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!))
@@ -69,21 +69,24 @@ export function enhanceAdmin(w: Window, context: Context) {
   const section = (title: string, content: string, intro = '') => `<section class="ea-card"><h2>${title}</h2>${intro ? `<p>${intro}</p>` : ''}${content}</section>`
   const empty = '<div class="ea-empty">No records yet. Completed captures remain on the station until you choose Sync now.</div>'
   const rowMarkup = (items: GradingRecord[]) => items.length ? `<div class="ea-table-wrap"><table><thead><tr><th style="width:32%">Record / grader</th><th>Sample</th><th>Weight</th><th>Grade / value</th><th>Image sync</th><th>Review</th></tr></thead><tbody>${items.map(row => `<tr><td class="ea-record-id"><div style="display:flex;align-items:center;gap:10px;min-width:0"><img data-thumb="${esc(row.id)}" alt="" style="width:38px;height:38px;border-radius:10px;object-fit:cover;background:#eef3ff;border:1px solid #e2e8f0;flex:none"><div style="min-width:0">${esc(row.id)}<small>${esc(row.grader)} · ${esc(new Date(row.timestamp).toLocaleString())}</small></div></div></td><td>${esc(row.sample)}</td><td>${esc(/^(?:nan|undefined|null|\s*)\s*kg$/i.test(row.weight) ? '—' : row.weight)}</td><td><b>${esc(row.grade)}</b><small>${esc(peso(row.transaction?.amount))}</small></td><td><span class="ea-badge ${esc(row.transaction?.syncState)}">${esc(row.transaction?.syncState === 'synced' ? 'Synced' : row.transaction?.syncState === 'failed' ? 'Retry needed' : 'Saved locally')}</span></td><td><button data-review="${esc(row.id)}" aria-label="Review ${esc(row.id)}">View</button></td></tr>`).join('')}</tbody></table></div>` : empty
-  const rangeLabels: [TimeRange, string][] = [['all', 'All time'], ['month', 'Last month'], ['week', 'Last week'], ['yesterday', 'Yesterday'], ['hour', 'An hour ago']]
-  const filterByRange = (items: GradingRecord[]) => {
+  const rangeLabels: [TimeRange, string][] = [['all', 'All time'], ['month', 'Last month'], ['week', 'Last week'], ['today', 'Today'], ['yesterday', 'Yesterday'], ['hour', 'An hour ago'], ['older', 'Older (> 30d)']]
+  const filterByRange = (items: GradingRecord[], range: TimeRange) => {
     const now = Date.now()
     const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0)
-    switch (v.range) {
+    switch (range) {
       case 'hour': return items.filter(r => r.timestamp >= now - 3600000)
+      case 'today': return items.filter(r => r.timestamp >= +todayStart)
       case 'yesterday': return items.filter(r => r.timestamp >= +todayStart - 86400000 && r.timestamp < +todayStart)
       case 'week': return items.filter(r => r.timestamp >= now - 7 * 86400000)
       case 'month': return items.filter(r => r.timestamp >= now - 30 * 86400000)
+      case 'older': return items.filter(r => r.timestamp < now - 30 * 86400000)
       default: return items
     }
   }
-  const rangeBar = `<div class="ea-filter-bar" role="group" aria-label="Time filter">${rangeLabels.map(([key, label]) => `<button type="button" data-range="${key}" class="${v.range === key ? 'is-active' : ''}">${label}</button>`).join('')}</div>`
+  const rangeSessions = (range: TimeRange) => new Set(filterByRange(records, range).map(r => r.sessionId)).size
+  const rangeBar = `<div class="ea-filter-bar" role="group" aria-label="Time filter">${rangeLabels.map(([key, label]) => `<button type="button" data-range="${key}" class="${v.range === key ? 'is-active' : ''}">${label} (${rangeSessions(key)})</button>`).join('')}</div>`
   const rangeLabelText = rangeLabels.find(([k]) => k === v.range)?.[1] ?? 'All time'
-  const rangedRecords = filterByRange(records)
+  const rangedRecords = filterByRange(records, v.range)
   let html = ''
   switch (state.tab) {
     case 'overview': {

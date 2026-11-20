@@ -714,26 +714,22 @@ const runtime = {
             goBtn.onclick = () => {
               d.getElementById('tail-avail-modal')?.remove()
               const overlay = d.createElement('div'); overlay.className = 'ovl'; overlay.id = 'tail-avail-modal'
-              const reasonBadge = lowConf
-                ? `Confidence below ${ACCEPT_CONFIDENCE}% (${Number(c).toFixed(1)}%)`
-                : `Low Sashibo Grade (Grade C · ${Number(c).toFixed(1)}%) — Verify with Tail-Cut`
               const chipBg = '#fff4db', chipFg = '#925800'
-              const sashiboSvg = `<svg width="64" height="44" viewBox="0 0 64 44" fill="none" aria-hidden="true"><rect x="2" y="10" width="60" height="24" rx="8" fill="#fff1f0" stroke="#f5c2c0" stroke-width="1.5"/><path d="M10 22C20 18 44 26 54 21" stroke="#dc2626" stroke-width="5" stroke-linecap="round"/><circle cx="14" cy="22" r="2.5" fill="#991b1b"/></svg>`
-              const tailSvg = `<svg width="64" height="44" viewBox="0 0 64 44" fill="none" aria-hidden="true"><rect x="2" y="4" width="60" height="36" rx="10" fill="#eef5ff" stroke="#bfd6ff" stroke-width="1.5"/><ellipse cx="32" cy="22" rx="18" ry="12" fill="#ef4444" stroke="#fca5a5" stroke-width="2"/><ellipse cx="32" cy="22" rx="10" ry="6" fill="#dc2626" stroke="#fecaca" stroke-width="1.2" stroke-dasharray="3 2"/><circle cx="32" cy="22" r="2.5" fill="#fff"/></svg>`
+              const sashiboImg = `<img src="/assets/sashiboCoreFull.png" alt="Sashibo Core" style="width:64px;height:48px;object-fit:contain;border-radius:10px;background:#fff;border:1px solid #f5d0b5;padding:2px;flex:none">`
+              const tailImg = `<img src="/assets/tailCutFull.png" alt="Tail-Cut Face" style="width:64px;height:48px;object-fit:contain;border-radius:10px;background:#fff;border:1px solid #bfd6ff;padding:2px;flex:none">`
               overlay.innerHTML = `<section class="sheet" role="dialog" aria-modal="true" aria-labelledby="ta-title" style="width:min(520px,95%);padding:24px;border-radius:26px;background:#fff;color:#182842;font-family:Inter,system-ui,sans-serif;box-shadow:0 24px 60px -16px rgba(11,26,58,.28)">
-                <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">
                   <span style="display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:999px;background:${chipBg};color:${chipFg};font-size:12px;font-weight:700">Sashibo Core · Grade ${g} · ${Number(c).toFixed(1)}%</span>
-                  <span style="font-size:11.5px;font-weight:700;color:#b45309">${reasonBadge}</span>
                 </div>
                 <h2 id="ta-title" style="margin:0 0 14px;font-size:22px;letter-spacing:-.025em;line-height:1.2">Is a Tail-Cut sample available?</h2>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
                   <div style="padding:12px;border-radius:16px;background:#fff9f5;border:1px solid #fde2c8;display:flex;align-items:center;gap:10px">
-                    ${sashiboSvg}
-                    <div><div style="font-size:11px;font-weight:700;color:#9a3412;text-transform:uppercase">1. Sashibo Core</div><div style="font-size:13px;font-weight:800;color:#182842">Grade ${g} (${Number(c).toFixed(1)}%)</div><div style="font-size:11px;color:#64748b">${lowConf ? `Under ${ACCEPT_CONFIDENCE}%` : 'Low grade (Grade C)'}</div></div>
+                    ${sashiboImg}
+                    <div><div style="font-size:13px;font-weight:800;color:#182842">Grade ${g} (${Number(c).toFixed(1)}%)</div><div style="font-size:11px;color:#64748b">${lowConf ? `Under ${ACCEPT_CONFIDENCE}%` : 'Low grade (Grade C)'}</div></div>
                   </div>
                   <div style="padding:12px;border-radius:16px;background:#f4f8ff;border:1px solid #d5e4ff;display:flex;align-items:center;gap:10px">
-                    ${tailSvg}
-                    <div><div style="font-size:11px;font-weight:700;color:#1d4ed8;text-transform:uppercase">2. Tail-Cut Face</div><div style="font-size:13px;font-weight:800;color:#182842">2nd Check</div><div style="font-size:11px;color:#64748b">Combines both</div></div>
+                    ${tailImg}
+                    <div><div style="font-size:13px;font-weight:800;color:#182842">2nd Check</div><div style="font-size:11px;color:#64748b">Combines both</div></div>
                   </div>
                 </div>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
@@ -848,9 +844,9 @@ const runtime = {
                 branch: 'Latest Update · Ready',
                 stepTag: 'Dashboard & Demo',
                 sysKey: 'storage',
-                title: 'Admin Time Filters, Record Thumbnails, 12 Demo Scenarios & Total Counts',
-                v2Base: 'Dashboard showed 0 for historical records, lacked time filters and record thumbnails, and offered 7 demo presets.',
-                improved: 'Added All/Month/Week/Yesterday/1h admin filters, sample thumbnails on records, 12 demo scenarios, red Grader Logout, applogo.svg branding, and accurate total session counts.'
+                title: 'Admin Time Filters, Record Pagination & Thumbnails, 12 Demo Scenarios',
+                v2Base: 'Dashboard showed 0 for historical records, lacked time filters, pagination, and record thumbnails, and offered 7 demo presets.',
+                improved: 'Added All/Month/Week/Today/Yesterday/1h/Older admin filters, Grader Dashboard pagination, sample thumbnails on records, Welcome Sync by grader, 12 demo scenarios, red Logout, and applogo.svg branding.'
               },
               {
                 hash: 'v2.6.4',
@@ -1055,6 +1051,115 @@ const runtime = {
           }
             ; (d.querySelector('.scr') ?? d.body).append(verChip)
         }
+        if (S.scr === 'welcome' && !d.getElementById('te-wl-sync')) {
+          const wlNr = d.querySelector<HTMLElement>('.wl-nr')
+          if (wlNr) {
+            const pendingCount = loadRecords().filter(r => r.transaction?.syncState !== 'synced').length
+            const syncBtn = d.createElement('button')
+            syncBtn.type = 'button'
+            syncBtn.id = 'te-wl-sync'
+            syncBtn.className = 'wl-b'
+            syncBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg> Sync${pendingCount > 0 ? ` (${pendingCount})` : ''}`
+            syncBtn.onclick = () => {
+              d.getElementById('te-wl-sync-modal')?.remove()
+              const allRecs = loadRecords()
+              const graderStats = new Map<string, { name: string; total: number; pending: number }>()
+              for (const r of allRecs) {
+                const name = (r.grader || 'Unknown').trim() || 'Unknown'
+                const key = name.toLocaleLowerCase()
+                const cur = graderStats.get(key) ?? { name, total: 0, pending: 0 }
+                cur.total += 1
+                if (r.transaction?.syncState !== 'synced') cur.pending += 1
+                graderStats.set(key, cur)
+              }
+              try {
+                const savedList = JSON.parse(localStorage.getItem('tunaeye-graders') ?? '[]')
+                if (Array.isArray(savedList)) {
+                  for (const g of savedList) {
+                    const name = String(g ?? '').trim()
+                    if (!name) continue
+                    const key = name.toLocaleLowerCase()
+                    if (!graderStats.has(key)) graderStats.set(key, { name, total: 0, pending: 0 })
+                  }
+                }
+              } catch { }
+              const rows = [...graderStats.values()]
+              let preselected: string[] | null = null
+              try {
+                const raw = JSON.parse(localStorage.getItem('tunaeye-pending-sync-graders') ?? 'null')
+                if (Array.isArray(raw)) preselected = raw.map(x => String(x).toLocaleLowerCase())
+              } catch { }
+              const isChecked = (name: string) => preselected ? preselected.includes(name.toLocaleLowerCase()) : true
+              const online = navigator.onLine
+              const m = d.createElement('div'); m.className = 'ovl'; m.id = 'te-wl-sync-modal'
+              m.innerHTML = `<section class="sheet" role="dialog" aria-modal="true" aria-labelledby="ws-title" style="width:min(480px,95%);padding:24px;border-radius:26px;background:#fff;color:#182842;font-family:Inter,system-ui,sans-serif;box-shadow:0 24px 60px -16px rgba(11,26,58,.28);display:grid;gap:14px">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+                  <span style="display:inline-flex;align-items:center;gap:6px;padding:4px 11px;border-radius:999px;background:${online ? '#ecfdf5' : '#fff7ed'};color:${online ? '#047857' : '#c2410c'};font-size:12px;font-weight:700">${online ? 'Online · Ready to sync' : 'Offline · Queue for when online'}</span>
+                  <button type="button" id="ws-toggle-all" style="border:0;background:none;color:#2563eb;font:700 12.5px Inter,system-ui,sans-serif;cursor:pointer;padding:4px 6px">Toggle all</button>
+                </div>
+                <div>
+                  <h2 id="ws-title" style="margin:0 0 4px;font-size:21px;font-weight:800;letter-spacing:-.02em">Sync device records</h2>
+                  <p style="margin:0;font-size:13px;color:#64748b">Choose which graders’ local records to sync${online ? ' now' : ' when the station is back online'}.</p>
+                </div>
+                <div id="ws-list" style="max-height:240px;overflow:auto;display:grid;gap:8px;padding:2px">
+                  ${rows.length ? rows.map((row, idx) => `<label style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 14px;border-radius:14px;border:1px solid #e2e8f0;background:#f8fafc;cursor:pointer">
+                    <span style="display:flex;align-items:center;gap:10px;min-width:0"><input type="checkbox" class="ws-cb" data-grader="${row.name.replace(/"/g, '&quot;')}" id="ws-cb-${idx}" ${isChecked(row.name) ? 'checked' : ''} style="width:18px;height:18px;accent-color:#2563eb;cursor:pointer"><b style="font-size:14px;color:#0f172a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${row.name.replace(/</g, '&lt;')}</b></span>
+                    <span style="font-size:12px;font-weight:600;color:${row.pending ? '#b45309' : '#64748b'};white-space:nowrap">${row.pending} pending · ${row.total} total</span>
+                  </label>`).join('') : '<div style="padding:18px;text-align:center;color:#64748b;font-size:13.5px;border-radius:14px;background:#f8fafc;border:1px dashed #cbd5e1">No local records on this device yet.</div>'}
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1.4fr;gap:10px;margin-top:2px">
+                  <button type="button" id="ws-cancel" style="height:46px;border-radius:999px;border:1px solid #d7e2f4;background:#f5f8ff;color:#182842;font:600 14px Inter,system-ui,sans-serif;cursor:pointer">Close</button>
+                  <button type="button" id="ws-run" style="height:46px;border-radius:999px;border:0;background:linear-gradient(135deg,#3b8bff,#1d5ef0);color:#fff;font:600 14px Inter,system-ui,sans-serif;cursor:pointer">${online ? 'Sync selected' : 'Save sync selection'}</button>
+                </div>
+              </section>`
+              m.onclick = ev => { if (ev.target === m) m.remove() }
+                ; (d.getElementById('stage') ?? d.body).append(m)
+              m.querySelector<HTMLButtonElement>('#ws-cancel')!.onclick = () => m.remove()
+              m.querySelector<HTMLButtonElement>('#ws-toggle-all')!.onclick = () => {
+                const cbs = [...m.querySelectorAll<HTMLInputElement>('.ws-cb')]
+                const allOn = cbs.every(c => c.checked)
+                cbs.forEach(c => { c.checked = !allOn })
+              }
+              m.querySelector<HTMLButtonElement>('#ws-run')!.onclick = async () => {
+                const selected = [...m.querySelectorAll<HTMLInputElement>('.ws-cb')].filter(c => c.checked).map(c => c.dataset.grader || '').filter(Boolean)
+                if (rows.length && !selected.length) { api(w).toast('Select at least one grader to sync.', 1); return }
+                try { localStorage.setItem('tunaeye-pending-sync-graders', JSON.stringify(selected)) } catch { }
+                if (!navigator.onLine) {
+                  m.remove()
+                  api(w).toast(`Saved sync selection (${selected.length} grader${selected.length === 1 ? '' : 's'}) — will sync when online.`)
+                  return
+                }
+                const runBtn = m.querySelector<HTMLButtonElement>('#ws-run')!
+                runBtn.disabled = true; runBtn.textContent = 'Syncing…'
+                try {
+                  const res = await syncPendingRecords({ limit: 200, graders: selected })
+                  try { localStorage.removeItem('tunaeye-pending-sync-graders') } catch { }
+                  m.remove()
+                  const left = loadRecords().filter(r => r.transaction?.syncState !== 'synced').length
+                  syncBtn.innerHTML = syncBtn.innerHTML.replace(/\s*\(\d+\)$/, '') + (left > 0 ? ` (${left})` : '')
+                  api(w).toast(res.synced > 0 ? `Synced ${res.synced} record${res.synced === 1 ? '' : 's'}.` : 'Selected graders are already up to date.')
+                } catch (e) {
+                  runBtn.disabled = false; runBtn.textContent = 'Sync selected'
+                  api(w).toast(e instanceof Error ? e.message : 'Sync queued until online.', 1)
+                }
+              }
+            }
+            wlNr.prepend(syncBtn)
+            if (!(w as any).__teWlOnlineSyncBound) {
+              ; (w as any).__teWlOnlineSyncBound = true
+              w.addEventListener('online', () => {
+                try {
+                  const queued = JSON.parse(localStorage.getItem('tunaeye-pending-sync-graders') ?? 'null')
+                  if (Array.isArray(queued) && queued.length && isSupabaseConfigured()) {
+                    void syncPendingRecords({ limit: 200, graders: queued }).then(() => {
+                      localStorage.removeItem('tunaeye-pending-sync-graders')
+                    }).catch(() => { })
+                  }
+                } catch { }
+              })
+            }
+          }
+        }
         if (S.scr === 'welcome') {
           ; (w as any).__teWelcomeFadeCleanup?.()
           const navEl = d.querySelector<HTMLElement>('.wl-nav')
@@ -1083,13 +1188,13 @@ const runtime = {
           }
           const scrEl = d.querySelector<HTMLElement>('.scr') ?? d.body
           scrEl.addEventListener('pointerdown', onWake)
-          ; (w as any).__teWelcomeFadeCleanup = () => {
-            if (fadeTimer != null) w.clearTimeout(fadeTimer)
-            scrEl.removeEventListener('pointerdown', onWake)
-          }
+            ; (w as any).__teWelcomeFadeCleanup = () => {
+              if (fadeTimer != null) w.clearTimeout(fadeTimer)
+              scrEl.removeEventListener('pointerdown', onWake)
+            }
         } else {
           ; (w as any).__teWelcomeFadeCleanup?.()
-          ; (w as any).__teWelcomeFadeCleanup = null
+            ; (w as any).__teWelcomeFadeCleanup = null
         }
         if (S.scr === 'detail' && S.detail) {
           const det = S.detail as { id?: string; o?: number; w?: number; g?: Grade; n?: string; ts?: number; amount?: number; rate?: number; coreImgId?: string | null; tailImgId?: string | null; coreGrade?: Grade | null; tailGrade?: Grade | null; c?: number | null; tl?: number | null; isDemo?: boolean }

@@ -10,14 +10,15 @@ All final kiosk screenshots are saved in [`public/kiosk-screens/`](./). Each ima
 
 | File | Screen Name | Short Explanation |
 | :--- | :--- | :--- |
-| [01-welcome.png](./01-welcome.png) | **Welcome Screen** | Kiosk idle/start screen showing station status (`TunaEye Station 01 · Ready`), full `TunaEye` wordmark, 4-step workflow bar, and **Start Grading**. |
+| [01-welcome.png](./01-welcome.png) | **Welcome Screen** | Kiosk idle/start screen showing station status (`TunaEye Station 01 · Ready`), `Sync` button, `v2.7 · Updates NEW` badge, full `TunaEye` wordmark, 4-step workflow bar, and **Start Grading**. |
+| [01b-welcome-sync-modal.png](./01b-welcome-sync-modal.png) | **Welcome Sync Modal** | Modal opened from the Welcome **Sync** button allowing operators to select which graders' local records to sync now or queue when back online. |
 | [02-grader-identity.png](./02-grader-identity.png) | **Grader Identity (`Who's grading?`)** | Operator enters or selects their name, toggles **Demo mode** / **Live mode**, runs **Test print**, views today's station stats, or opens **Admin access**. |
 | [24-terms-dialog.png](./24-terms-dialog.png) | **Terms & Conditions Dialog** | Modal opened from the Grader Identity screen displaying the kiosk terms of use. |
 | [25-privacy-dialog.png](./25-privacy-dialog.png) | **Privacy Policy Dialog** | Modal opened from the Grader Identity screen explaining local/cloud data handling. |
 | [03-weight-entry.png](./03-weight-entry.png) | **Weight Entry (`Weigh the fish`)** | Touch numeric keypad (`15–200 kg`) for entering the fish weight shown on the scale before starting capture. |
-| [04-placement-guide.png](./04-placement-guide.png) | **Placement Guide — Step 1** | Guided tutorial Step 1 of 3: Pull out the chamber tray and ensure the surface is clean. |
-| [04b-placement-guide-step2.png](./04b-placement-guide-step2.png) | **Placement Guide — Step 2** | Guided tutorial Step 2 of 3: Place the Sashibo Core or Tail-Cut sample flat inside the frame. |
-| [04c-placement-guide-step3.png](./04c-placement-guide-step3.png) | **Placement Guide — Step 3** | Guided tutorial Step 3 of 3: Close the tray for even 5000K lighting and start scanning. |
+| [04-placement-guide.png](./04-placement-guide.png) | **Placement Guide — Step 1** | Guided tutorial Step 1 of 3 (`2s` auto-advance, `Close` / `Skip` right of `Next`): Pull out the chamber tray and ensure the surface is clean. |
+| [04b-placement-guide-step2.png](./04b-placement-guide-step2.png) | **Placement Guide — Step 2** | Guided tutorial Step 2 of 3 (`2s` auto-advance, `Close` / `Skip` right of `Next`): Place the Sashibo Core or Tail-Cut sample flat inside the frame. |
+| [04c-placement-guide-step3.png](./04c-placement-guide-step3.png) | **Placement Guide — Step 3** | Guided tutorial Step 3 of 3 (`2s` auto-advance, `Close` / `Skip` right of `Next`): Close the tray for even 5000K lighting and start scanning. |
 
 ---
 
@@ -65,11 +66,12 @@ All final kiosk screenshots are saved in [`public/kiosk-screens/`](./). Each ima
 | File | Screen Name | Short Explanation |
 | :--- | :--- | :--- |
 | [12-admin-pin.png](./12-admin-pin.png) | **Admin PIN Entry** | 4-digit touch PIN keypad protecting access to the Admin Console. |
-| [13-admin-overview.png](./13-admin-overview.png) | **Admin Overview** | Main admin dashboard with time filters (`All time`, `Last month`, `Last week`, `Yesterday`, `An hour ago`), metrics, 7-day volume chart, grade ring, recent records, and the secret button under `Logout`. |
+| [13-admin-overview.png](./13-admin-overview.png) | **Admin Overview** | Main admin dashboard with time filters (`All time`, `Last month`, `Last week`, `Today`, `Yesterday`, `An hour ago`, `Older (> 30d)`), metrics, 7-day volume chart, grade ring, recent records, and the secret button right of `Logout`. |
 | [30-admin-overview.png](./30-admin-overview.png) | **Admin Overview (Alt)** | Admin overview tab capture showing populated station operations metrics. |
 | [14-admin-records.png](./14-admin-records.png) | **Admin Records** | Searchable/time-filterable table of all inspection records with sample thumbnails, sync status, CSV export, and evidence review. |
 | [14b-admin-record-detail.png](./14b-admin-record-detail.png) | **Admin Transaction & Evidence Detail** | Modal opened by tapping **View** on any row in Admin Records — displays the captured sample image, weight/value, saved rate, original prediction, override, and sync status. |
 | [admin-records-full.png](./admin-records-full.png) | **Admin Records (Full)** | Full-view capture of the Admin Records management tab. |
+| [15b-admin-expert-graders.png](./15b-admin-expert-graders.png) | **Admin Expert Graders** | Registered graders list with sample counts, **Add grader**, **View records** jump button, and **Remove**. |
 | [15-admin-devices.png](./15-admin-devices.png) | **Admin Devices** | Hardware diagnostics for the Raspberry Pi camera, Bluetooth thermal printer, and network connection. |
 | [admin-devices-full.png](./admin-devices-full.png) | **Admin Devices (Full)** | Full-view capture of the Admin Devices & hardware status tab. |
 | [16-admin-settings.png](./16-admin-settings.png) | **Admin Settings** | Station configuration for station name, Pi API URL, Camera URL, operating mode, and cloud sync/PIN settings. |
