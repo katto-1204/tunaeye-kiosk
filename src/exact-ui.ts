@@ -324,9 +324,12 @@ const runtime = {
           try { localStorage.setItem('tunaeye-secret-a', '0') } catch { }
         }
       }
+      const invalidSampleText = sample.toLowerCase().includes('sashibo')
+        ? 'It seems like the scanned object is not a Sashibo sample. Camera reset — please scan again.'
+        : 'It seems like the scanned object is not a Tail-cut sample. Camera reset — please scan again.'
       if (result.outcome === 'invalid') {
         if (temporaryId) await deleteCapturedEvidence(temporaryId)
-        showInvalidSampleModal(`This image is not recognized as a valid ${sample}. Camera reset — please scan again.`); return
+        showInvalidSampleModal(invalidSampleText); return
       }
       if (temporaryId) { await promoteCapturedEvidence(temporaryId, id); temporaryId = undefined }
       session = { ...session, fishWeights: { 'Fish 1': S.w }, selectedSamples: key === 'tail' ? ['Sashibo core', 'Tail cut'] : ['Sashibo core'], currentSampleIndex: key === 'tail' ? 1 : 0 }
@@ -363,7 +366,11 @@ const runtime = {
         if (!isDemoMode()) void runtime.camera(w)
         d.getElementById('te-invalid-sample-modal')?.remove()
         const ov = d.createElement('div'); ov.className = 'ovl'; ov.id = 'te-invalid-sample-modal'
-        ov.innerHTML = `<section class="sheet" role="alertdialog" aria-modal="true" aria-label="Invalid sample image" style="width:min(420px,92%);padding:24px;border-radius:24px;background:#fff;color:#182842;font-family:Inter,system-ui,sans-serif;text-align:center;box-shadow:0 24px 60px -16px rgba(11,26,58,.32)"><div style="width:52px;height:52px;margin:0 auto 12px;border-radius:50%;background:#fef2f2;border:1px solid #fecaca;color:#dc2626;display:grid;place-items:center"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div><h2 style="margin:0 0 6px;font-size:20px;letter-spacing:-.02em">Not a valid ${sample}</h2><p style="margin:0;font-size:13.5px;line-height:1.5;color:#5b6b84">${error.message}</p></section>`
+        const fallbackSubtext = sample.toLowerCase().includes('sashibo')
+          ? 'It seems like the scanned object is not a Sashibo sample. Camera reset — please scan again.'
+          : 'It seems like the scanned object is not a Tail-cut sample. Camera reset — please scan again.'
+        const subtext = /not recognized as a valid/i.test(error.message) ? fallbackSubtext : (error.message || fallbackSubtext)
+        ov.innerHTML = `<section class="sheet" role="alertdialog" aria-modal="true" aria-label="Invalid sample image" style="width:min(420px,92%);padding:24px;border-radius:24px;background:#fff;color:#182842;font-family:Inter,system-ui,sans-serif;text-align:center;box-shadow:0 24px 60px -16px rgba(11,26,58,.32)"><div style="width:52px;height:52px;margin:0 auto 12px;border-radius:50%;background:#fef2f2;border:1px solid #fecaca;color:#dc2626;display:grid;place-items:center"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div><h2 style="margin:0 0 6px;font-size:20px;letter-spacing:-.02em">Not a valid ${sample}</h2><p style="margin:0;font-size:13.5px;line-height:1.5;color:#5b6b84">${subtext}</p></section>`
         ov.onclick = () => ov.remove()
           ; (d.getElementById('stage') ?? d.body).append(ov)
         w.setTimeout(() => { if (ov.isConnected) ov.remove() }, 2000)
