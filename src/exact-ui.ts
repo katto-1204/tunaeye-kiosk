@@ -1133,17 +1133,70 @@ const runtime = {
                   return
                 }
                 const runBtn = m.querySelector<HTMLButtonElement>('#ws-run')!
-                runBtn.disabled = true; runBtn.textContent = 'Syncing…'
+                runBtn.disabled = true; runBtn.textContent = 'Connecting…'
+                let finished = false
+                const showSlowSyncModal = (progressText?: string) => {
+                  const existing = d.getElementById('te-slow-sync-modal')
+                  if (finished || existing) {
+                    const pEl = existing?.querySelector<HTMLElement>('#te-slow-sync-progress')
+                    if (pEl && progressText) pEl.textContent = progressText
+                    return
+                  }
+                  const sm = d.createElement('div'); sm.className = 'ovl'; sm.id = 'te-slow-sync-modal'
+                  sm.innerHTML = `<section class="sheet" role="dialog" aria-modal="true" aria-labelledby="ss-title" style="width:min(430px,94%);padding:24px;border-radius:24px;background:#fff;color:#182842;font-family:Inter,system-ui,sans-serif;box-shadow:0 24px 60px -16px rgba(11,26,58,.3);display:grid;gap:12px;text-align:center">
+                    <div style="width:52px;height:52px;margin:0 auto;border-radius:50%;background:#fff7ed;border:1px solid #fed7aa;color:#c2410c;display:grid;place-items:center">
+                      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>
+                    </div>
+                    <h2 id="ss-title" style="margin:0;font-size:20px;font-weight:800;letter-spacing:-.02em">Slow Wi-Fi connection</h2>
+                    <p style="margin:0;font-size:13.5px;line-height:1.5;color:#5b6b84">Sync is taking longer than usual on this Wi-Fi. Records stay saved locally while upload continues.</p>
+                    <div id="te-slow-sync-progress" style="font-size:12.5px;font-weight:700;color:#2563eb">${progressText || 'Still syncing…'}</div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:4px">
+                      <button type="button" id="ss-bg" style="height:44px;border-radius:999px;border:1px solid #d7e2f4;background:#f5f8ff;color:#182842;font:600 13.5px Inter,system-ui,sans-serif;cursor:pointer">Sync in background</button>
+                      <button type="button" id="ss-wait" style="height:44px;border-radius:999px;border:0;background:linear-gradient(135deg,#3b8bff,#1d5ef0);color:#fff;font:600 13.5px Inter,system-ui,sans-serif;cursor:pointer">Keep waiting</button>
+                    </div>
+                  </section>`
+                  sm.querySelector<HTMLButtonElement>('#ss-bg')!.onclick = () => { sm.remove(); m.remove(); api(w).toast('Syncing in background…') }
+                  sm.querySelector<HTMLButtonElement>('#ss-wait')!.onclick = () => { sm.remove() }
+                    ; (d.getElementById('stage') ?? d.body).append(sm)
+                }
+                const slowTimer = w.setTimeout(() => showSlowSyncModal(runBtn.textContent || 'Still syncing…'), 4000)
+                const onProgress = (ev: Event) => {
+                  const detail = (ev as CustomEvent<{ phase?: string; detail?: string }>).detail
+                  if (detail?.phase === 'syncing') {
+                    const txt = detail.detail ? `Syncing ${detail.detail}…` : 'Syncing…'
+                    runBtn.textContent = txt
+                    const pEl = d.getElementById('te-slow-sync-progress')
+                    if (pEl) pEl.textContent = txt
+                  }
+                }
+                w.addEventListener('tunaeye-sync-status', onProgress)
                 try {
                   const res = await syncPendingRecords({ limit: 200, graders: selected })
-                  try { localStorage.removeItem('tunaeye-pending-sync-graders') } catch { }
+                  finished = true
+                  w.clearTimeout(slowTimer)
+                  d.getElementById('te-slow-sync-modal')?.remove()
+                  if (res.failed === 0 && res.waiting === 0) {
+                    try { localStorage.removeItem('tunaeye-pending-sync-graders') } catch { }
+                  }
                   m.remove()
                   const left = loadRecords().filter(r => r.transaction?.syncState !== 'synced').length
                   syncBtn.innerHTML = syncBtn.innerHTML.replace(/\s*\(\d+\)$/, '') + (left > 0 ? ` (${left})` : '')
-                  api(w).toast(res.synced > 0 ? `Synced ${res.synced} record${res.synced === 1 ? '' : 's'}.` : 'Selected graders are already up to date.')
+                  if (res.synced > 0 && res.failed === 0 && res.waiting === 0) {
+                    api(w).toast(`Synced ${res.synced} record${res.synced === 1 ? '' : 's'}.`)
+                  } else if (res.failed > 0 || res.waiting > 0) {
+                    api(w).toast(res.firstError || `Synced ${res.synced}, ${res.failed + res.waiting} remaining.`, 1)
+                  } else {
+                    api(w).toast('Selected graders are already up to date.')
+                  }
                 } catch (e) {
+                  finished = true
+                  w.clearTimeout(slowTimer)
+                  d.getElementById('te-slow-sync-modal')?.remove()
                   runBtn.disabled = false; runBtn.textContent = 'Sync selected'
                   api(w).toast(e instanceof Error ? e.message : 'Sync queued until online.', 1)
+                } finally {
+                  w.clearTimeout(slowTimer)
+                  w.removeEventListener('tunaeye-sync-status', onProgress)
                 }
               }
             }
