@@ -45,7 +45,8 @@ const preliminaryGrade = (): Grade => {
 let localStream: MediaStream | null = null
 const stopLocalStream = () => { if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null } }
 const api = (w: Kiosk) => w.eval('({S,SC,go,R,toast,modal,api,RATE})')
-function history(graderName?: string) {
+let dashScope: 'mine' | 'all' = 'mine'
+function history(graderName?: string, includeAll = false) {
   const target = graderName?.trim().toLowerCase()
   const allGroups = new Map<string, GradingRecord[]>()
   const filteredGroups = new Map<string, GradingRecord[]>()
@@ -55,7 +56,7 @@ function history(graderName?: string) {
       filteredGroups.set(row.sessionId, [...(filteredGroups.get(row.sessionId) ?? []), row])
     }
   }
-  const source = filteredGroups.size > 0 ? filteredGroups : allGroups
+  const source = includeAll ? allGroups : filteredGroups
   return [...source.values()].map((rows, i) => {
     const core = rows.find(r => r.sample === 'Sashibo core') ?? rows[0], tail = rows.find(r => r.sample === 'Tail cut')
     return {
@@ -514,7 +515,8 @@ const runtime = {
     const original = w.eval('R')
       ; (w as any).R = () => {
         S.cfg.demo = isDemoMode()
-        if (S.scr === 'dash') S.hist = history(S.name)
+        if (S.scr === 'welcome' || S.scr === 'name') dashScope = 'mine'
+        if (S.scr === 'dash') S.hist = history(S.name, dashScope === 'all')
         original()
         const d = w.document, decision = decisionFor(session), sync = d.getElementById('sy')
         if (S.scr === 'pin') {
@@ -1470,11 +1472,149 @@ const runtime = {
             }
             scr.append(tpBtn)
           }
+          const phonetic = (v: string) => v.toLowerCase().replace(/[^a-z0-9]/g, '').replace(/ph/g, 'f').replace(/th/g, 't').replace(/[cq]/g, 'k').replace(/z/g, 's').replace(/(.)\1+/g, '$1')
+          const editDist = (a: string, b: string) => {
+            const m = a.length, n = b.length
+            const dp = Array.from({ length: m + 1 }, (_, i) => Array.from({ length: n + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0)))
+            for (let i = 1; i <= m; i++) for (let j = 1; j <= n; j++) {
+              dp[i][j] = a[i - 1] === b[j - 1] ? dp[i - 1][j - 1] : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1])
+            }
+            return dp[m][n]
+          }
+          const findGraderMatches = (raw: string) => {
+            const q = raw.trim()
+            if (!q) return []
+            const ql = q.toLowerCase(), qp = phonetic(q)
+            const map = new Map<string, { name: string; count: number; lastTs: number }>()
+            for (const r of loadRecords()) {
+              const nm = (r.grader || '').trim()
+              if (!nm) continue
+              const k = nm.toLowerCase()
+              const cur = map.get(k) ?? { name: nm, count: 0, lastTs: 0 }
+              cur.count += 1
+              if (r.timestamp > cur.lastTs) cur.lastTs = r.timestamp
+              map.set(k, cur)
+            }
+            try {
+              const saved = JSON.parse(localStorage.getItem('tunaeye-graders') ?? '[]')
+              if (Array.isArray(saved)) {
+                for (const g of saved) {
+                  const nm = String(g ?? '').trim()
+                  if (!nm) continue
+                  const k = nm.toLowerCase()
+                  if (!map.has(k)) map.set(k, { name: nm, count: 0, lastTs: 0 })
+                }
+              }
+            } catch { }
+            return [...map.values()].filter(g => {
+              const gl = g.name.toLowerCase(), gp = phonetic(g.name)
+              if (gl === ql) return true
+              if (qp.length >= 2 && gp === qp) return true
+              if (ql.length >= 3 && gl.length >= 3 && (gl.startsWith(ql) || ql.startsWith(gl))) return true
+              return ql.length >= 3 && gl.length >= 3 && editDist(ql, gl) <= 2
+            }).sort((a, b) => (b.lastTs - a.lastTs) || (b.count - a.count)).slice(0, 3)
+          }
+          const agoText = (ts: number) => {
+            if (!ts) return 'earlier on this device'
+            const mins = Math.max(0, Math.round((Date.now() - ts) / 60000))
+            if (mins < 1) return 'just now'
+            if (mins < 60) return `${mins} min${mins === 1 ? '' : 's'} ago`
+            const hrs = Math.round(mins / 60)
+            if (hrs < 24) return `${hrs} hour${hrs === 1 ? '' : 's'} ago`
+            const days = Math.round(hrs / 24)
+            return `${days} day${days === 1 ? '' : 's'} ago`
+          }
+          const confirmGraderIdentity = (typed: string) => new Promise<string | null>(resolve => {
+            const matches = findGraderMatches(typed)
+            if (!matches.length) { resolve(typed); return }
+            let selectedMatch = matches[0]
+            d.getElementById('te-grader-match-modal')?.remove()
+            const ov = d.createElement('div'); ov.className = 'ovl'; ov.id = 'te-grader-match-modal'
+            const renderBody = () => {
+              const exact = selectedMatch.name.toLowerCase() === typed.trim().toLowerCase()
+              const activity = selectedMatch.lastTs
+                ? `Have you graded <b>${agoText(selectedMatch.lastTs)}</b>? (${selectedMatch.count} record${selectedMatch.count === 1 ? '' : 's'})`
+                : `${selectedMatch.name} already has a profile on this device.`
+              ov.innerHTML = `<section class="sheet" role="dialog" aria-modal="true" aria-labelledby="gm-title" style="width:min(450px,94%);padding:24px;border-radius:26px;background:#fff;color:#182842;font-family:Inter,system-ui,sans-serif;box-shadow:0 24px 60px -16px rgba(11,26,58,.28);display:grid;gap:14px">
+                <span style="display:inline-flex;width:fit-content;padding:4px 11px;border-radius:999px;background:#eff6ff;color:#1d4ed8;font-size:12px;font-weight:700">Grader check</span>
+                <div>
+                  <h2 id="gm-title" style="margin:0 0 6px;font-size:22px;font-weight:800;letter-spacing:-.02em">${exact ? `Are you the same ${selectedMatch.name}?` : `Are you ${selectedMatch.name}?`}</h2>
+                  <p style="margin:0;font-size:13.5px;line-height:1.5;color:#5b6b84">${activity}</p>
+                </div>
+                ${matches.length > 1 ? `<div style="display:flex;gap:8px;flex-wrap:wrap">${matches.map((m, idx) => `<button type="button" class="gm-pick" data-idx="${idx}" style="padding:7px 13px;border-radius:999px;border:1px solid ${m.name === selectedMatch.name ? '#2563eb' : '#dbe4f0'};background:${m.name === selectedMatch.name ? '#eff6ff' : '#f8fafc'};color:${m.name === selectedMatch.name ? '#1d4ed8' : '#334155'};font:700 12.5px Inter,system-ui,sans-serif;cursor:pointer">${m.name.replace(/</g, '&lt;')}</button>`).join('')}</div>` : ''}
+                <div id="gm-init-wrap" style="display:none;gap:8px;padding:12px;border-radius:16px;background:#f8fafc;border:1px solid #e2e8f0">
+                  <label for="gm-init" style="font-size:12.5px;font-weight:700;color:#334155">Add last initial(s) so records stay separate:</label>
+                  <div style="display:flex;align-items:center;gap:8px">
+                    <span style="font-size:15px;font-weight:800;color:#0f172a">${typed.trim().slice(0, 10).replace(/</g, '&lt;')}</span>
+                    <input id="gm-init" maxlength="4" placeholder="H / Ho" autocomplete="off" style="width:82px;height:40px;border-radius:12px;border:1.5px solid #2563eb;text-align:center;font:800 15px Inter,system-ui,sans-serif;color:#0f172a;outline:none" />
+                    <span style="font-size:13px;color:#64748b">.</span>
+                  </div>
+                  <div id="gm-init-err" style="display:none;font-size:12px;font-weight:600;color:#dc2626"></div>
+                </div>
+                <div id="gm-actions" style="display:grid;grid-template-columns:1fr 1.2fr;gap:10px">
+                  <button type="button" id="gm-no" style="height:46px;border-radius:999px;border:1px solid #d7e2f4;background:#f5f8ff;color:#182842;font:600 13.5px Inter,system-ui,sans-serif;cursor:pointer">No, start new</button>
+                  <button type="button" id="gm-yes" style="height:46px;border-radius:999px;border:0;background:linear-gradient(135deg,#3b8bff,#1d5ef0);color:#fff;font:600 13.5px Inter,system-ui,sans-serif;cursor:pointer">Yes, continue</button>
+                </div>
+              </section>`
+              ov.querySelectorAll<HTMLButtonElement>('.gm-pick').forEach(btn => {
+                btn.onclick = () => { selectedMatch = matches[Number(btn.dataset.idx)]; renderBody() }
+              })
+              ov.querySelector<HTMLButtonElement>('#gm-yes')!.onclick = () => { ov.remove(); resolve(selectedMatch.name) }
+              const noBtn = ov.querySelector<HTMLButtonElement>('#gm-no')!
+              const initWrap = ov.querySelector<HTMLElement>('#gm-init-wrap')!
+              const initInput = ov.querySelector<HTMLInputElement>('#gm-init')!
+              noBtn.onclick = () => {
+                if (initWrap.style.display === 'none') {
+                  initWrap.style.display = 'grid'
+                  noBtn.textContent = 'Back'
+                  const yesBtn = ov.querySelector<HTMLButtonElement>('#gm-yes')!
+                  yesBtn.textContent = 'Create new grader'
+                  initInput.focus()
+                  yesBtn.onclick = () => {
+                    const rawInit = initInput.value.replace(/[^a-zA-Z0-9]/g, '').slice(0, 4)
+                    const initErr = ov.querySelector<HTMLElement>('#gm-init-err')!
+                    if (!rawInit) {
+                      initErr.style.display = 'block'
+                      initErr.textContent = 'Enter at least 1 letter (e.g. H, Ho, H2).'
+                      initInput.focus(); return
+                    }
+                    const fmtInit = rawInit[0].toUpperCase() + rawInit.slice(1).toLowerCase()
+                    const base = typed.trim().slice(0, Math.max(2, 15 - fmtInit.length - 2))
+                    const nextName = `${base} ${fmtInit}.`
+                    const allExisting = new Set([
+                      ...loadRecords().map(r => (r.grader || '').trim().toLowerCase()),
+                      ...(() => { try { return (JSON.parse(localStorage.getItem('tunaeye-graders') ?? '[]') as unknown[]).map(x => String(x).trim().toLowerCase()) } catch { return [] } })()
+                    ])
+                    if (allExisting.has(nextName.toLowerCase())) {
+                      initErr.style.display = 'block'
+                      initErr.textContent = `"${nextName}" already exists — add 1 more letter or number (e.g. ${fmtInit}2).`
+                      initInput.focus(); return
+                    }
+                    ov.remove()
+                    resolve(nextName)
+                  }
+                } else {
+                  renderBody()
+                }
+              }
+            }
+            ov.onclick = ev => { if (ev.target === ov) { ov.remove(); resolve(null) } }
+            renderBody()
+              ; (d.getElementById('stage') ?? d.body).append(ov)
+          })
           const start = d.getElementById('go') as HTMLButtonElement, proceed = start.onclick
           start.onclick = async event => {
             if (start.disabled) return
             start.disabled = true
             try {
+              const resolvedName = await confirmGraderIdentity(S.name)
+              if (!resolvedName) return
+              if (resolvedName !== S.name) {
+                S.name = resolvedName
+                if (inpEl) inpEl.value = resolvedName
+                if (nmEl) nmEl.textContent = resolvedName
+                if (S.remember) try { localStorage.setItem('tunaeye-name', resolvedName) } catch { }
+              }
               if (isDemoMode() || await showLiveReadiness(w)) {
                 registerGrader(S.name)
                 proceed?.call(start, event)
@@ -1642,10 +1782,49 @@ const runtime = {
           } else { localStorage.setItem('tunaeye-station', S.cfg.name); localStorage.setItem('tunaeye-rpi-url', S.cfg.url); localStorage.setItem('tunaeye-model-name', S.cfg.model); api(w).toast('Station settings saved') }
         }
         if (S.scr === 'dash') {
+          const dnameEl = d.querySelector<HTMLElement>('.dname')
+          if (dnameEl && S.name.trim()) {
+            const full = S.name.trim()
+            dnameEl.textContent = full.endsWith('.') ? full : `${full}.`
+          }
+          const dsrH = d.querySelector<HTMLElement>('.dsr-h')
+          if (dsrH && !d.getElementById('te-dash-scope')) {
+            const scopeWrap = d.createElement('div')
+            scopeWrap.id = 'te-dash-scope'
+            scopeWrap.style.cssText = 'display:inline-flex;gap:6px;margin-top:8px;flex-wrap:wrap'
+            const mkBtn = (id: string, label: string, active: boolean) => {
+              const b = d.createElement('button')
+              b.type = 'button'; b.id = id
+              b.textContent = label
+              b.style.cssText = `padding:6px 13px;border-radius:999px;font:700 12px Inter,system-ui,sans-serif;cursor:pointer;border:1px solid ${active ? '#2563eb' : '#d7e2f4'};background:${active ? '#2563eb' : '#f8fafc'};color:${active ? '#fff' : '#475569'}`
+              return b
+            }
+            const mineBtn = mkBtn('te-scope-mine', 'My records', dashScope === 'mine')
+            const allBtn = mkBtn('te-scope-all', 'All device records', dashScope === 'all')
+            mineBtn.onclick = () => { if (dashScope !== 'mine') { dashScope = 'mine'; S.dpage = 1; api(w).R() } }
+            allBtn.onclick = () => { if (dashScope !== 'all') { dashScope = 'all'; S.dpage = 1; api(w).R() } }
+            scopeWrap.append(mineBtn, allBtn)
+            dsrH.firstElementChild?.append(scopeWrap)
+          }
+          const dls = d.querySelector<HTMLElement>('.dls')
+          if (dls && (!S.hist || S.hist.length === 0)) {
+            dls.innerHTML = `<div id="te-dash-empty" style="padding:42px 20px;text-align:center;color:#64748b;font-size:14.5px;font-weight:600;border:1px dashed #cbd5e1;border-radius:16px;background:#f8fafc">No records yet</div>`
+          }
           d.querySelectorAll<HTMLElement>('.drow[data-i]').forEach(row => {
             const item = S.hist?.[Number(row.dataset.i)]
             const firstCell = row.firstElementChild as HTMLElement | null
             if (!item || !firstCell || firstCell.querySelector('.drow-thumb')) return
+            if (dashScope === 'all' && item.n) {
+              const small = firstCell.querySelector('small')
+              if (small && !small.textContent?.includes(item.n)) {
+                const nameTag = d.createElement('span')
+                nameTag.textContent = ` · ${item.n}`
+                nameTag.style.cssText = 'font-weight:700;color:#334155'
+                const tg = small.querySelector('.tg')
+                if (tg) small.insertBefore(nameTag, tg)
+                else small.append(nameTag)
+              }
+            }
             const textWrap = d.createElement('div')
             textWrap.style.minWidth = '0'
             while (firstCell.firstChild) textWrap.append(firstCell.firstChild)

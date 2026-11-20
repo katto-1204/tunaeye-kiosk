@@ -13,7 +13,9 @@ All final kiosk screenshots are saved in [`public/kiosk-screens/`](./). Each ima
 | [00-landing-page.png](./00-landing-page.png) | **Public Landing Page** | Marketing & station portal showing the hero, `v2.7.0 What's new` badge, tablet kiosk preview, and **Install kiosk app**. |
 | [01-welcome.png](./01-welcome.png) | **Welcome Screen** | Kiosk idle/start screen showing station status (`TunaEye Station 01 · Ready`), `Sync` button, `v2.7 · Updates NEW` badge, full `TunaEye` wordmark, 4-step workflow bar, and **Start Grading**. |
 | [01b-welcome-sync-modal.png](./01b-welcome-sync-modal.png) | **Welcome Sync Modal** | Modal opened from the Welcome **Sync** button allowing operators to select which graders' local records to sync now or queue when back online. |
+| [01c-slow-wifi-sync-modal.png](./01c-slow-wifi-sync-modal.png) | **Slow Wi-Fi Sync Modal** | Shown automatically if sync takes over 4 seconds on slow Wi-Fi, with **Sync in background** and **Keep waiting** actions. |
 | [02-grader-identity.png](./02-grader-identity.png) | **Grader Identity (`Who's grading?`)** | Operator enters or selects their name, toggles **Demo mode** / **Live mode**, runs **Test print**, views today's station stats, or opens **Admin access**. |
+| [02b-grader-match-modal.png](./02b-grader-match-modal.png) | **Grader Identity Check Modal** | Phonetic/duplicate name check (`Are you Kat?` · `Have you graded 5 mins ago?`) with **Yes, continue** or **No, start new** (last-initial disambiguation). |
 | [24-terms-dialog.png](./24-terms-dialog.png) | **Terms & Conditions Dialog** | Modal opened from the Grader Identity screen displaying the kiosk terms of use. |
 | [25-privacy-dialog.png](./25-privacy-dialog.png) | **Privacy Policy Dialog** | Modal opened from the Grader Identity screen explaining local/cloud data handling. |
 | [03-weight-entry.png](./03-weight-entry.png) | **Weight Entry (`Weigh the fish`)** | Touch numeric keypad (`15–200 kg`) for entering the fish weight shown on the scale before starting capture. |
@@ -57,7 +59,8 @@ All final kiosk screenshots are saved in [`public/kiosk-screens/`](./). Each ima
 
 | File | Screen Name | Short Explanation |
 | :--- | :--- | :--- |
-| [19-grader-dashboard.png](./19-grader-dashboard.png) | **Grader Dashboard** | Operator overview for the logged-in grader (`Start grading`, `Sync now`, red `Logout`), today's summary stats, and the **Recent records** list. |
+| [19-grader-dashboard.png](./19-grader-dashboard.png) | **Grader Dashboard** | Operator overview for the logged-in grader (`Start grading`, `Sync now`, red `Logout`), **My records** / **All device records** filter, today's summary stats, and the **Recent records** list. |
+| [19b-grader-dashboard-empty.png](./19b-grader-dashboard-empty.png) | **Grader Dashboard (New Grader Empty State)** | Shown for a brand-new grader with 0 records yet (`No records yet`) before switching to **All device records**. |
 | [18-record-detail.png](./18-record-detail.png) | **Record Detail** | **Opened by tapping a row in Grader Dashboard**: drills into a single record (`TE_0010`) with sample type, weight, grade, confidence, value, and **Reprint receipt**. |
 | [35-record-detail-full.png](./35-record-detail-full.png) | **Record Detail (Full)** | Full-view inspection record showing complete metadata, grade breakdown, and reprint action. |
 
