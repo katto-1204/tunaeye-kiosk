@@ -83,3 +83,23 @@ All final kiosk screenshots are saved in [`public/kiosk-screens/`](./). Each ima
 | [admin-settings-full.png](./admin-settings-full.png) | **Admin Settings (Full)** | Full-view capture of the Admin Settings tab. |
 | [17-admin-audit-log.png](./17-admin-audit-log.png) | **Admin Audit Log** | Chronological operator and system audit trail (Pi tests, completed sessions, price updates, overrides, exports, settings). |
 | [admin-audit-full.png](./admin-audit-full.png) | **Admin Audit Log (Full)** | Full-view capture of the Admin Audit Log tab. |
+
+---
+
+## 6. Demo Scenarios & Grade A / B / C Outcomes
+
+| File | Screen Name | Short Explanation |
+| :--- | :--- | :--- |
+| [demo-01-grade-a.png](./demo-01-grade-a.png) | **Demo — Grade A (96.3%)** | `Sashibo accepts` demo scenario: confident Grade A proceeds straight to Final Grade. |
+| [demo-02-grade-b.png](./demo-02-grade-b.png) | **Demo — Grade B (94%)** | `Grade B` demo scenario: confident Grade B proceeds straight to Final Grade. |
+| [demo-03-grade-c-tailneed.png](./demo-03-grade-c-tailneed.png) | **Demo — Grade C (Tail-Cut Prompt)** | `Grade C` demo scenario: Grade C triggers Tail-Cut verification screen before finalizing. |
+| [demo-03b-grade-c-final.png](./demo-03b-grade-c-final.png) | **Demo — Grade C Final (94%)** | `Grade C` demo scenario: Core 94% C + Tail 94% C -> Final Grade C (Processing Quality) red card. |
+| [demo-04-needs-tail.png](./demo-04-needs-tail.png) | **Demo — Tail-Cut Needed (B)** | `Tail cut needed` demo: Core 74.2% C + Tail 91.4% B -> Combined Grade B. |
+| [demo-05-tail-upgrades-a.png](./demo-05-tail-upgrades-a.png) | **Demo — Tail Upgrades to Grade A** | `Tail upgrades to A` demo: Core 71.5% B + Tail 93.8% A -> Combined Grade A. |
+| [demo-06-tail-confirms-c.png](./demo-06-tail-confirms-c.png) | **Demo — Tail Confirms Grade C** | `Tail confirms C` demo: Core 72.4% B + Tail 89.2% C -> Combined Grade C. |
+| [demo-07-no-tail-provisional.png](./demo-07-no-tail-provisional.png) | **Demo — No Tail-Cut (Provisional)** | `No tail cut (Provisional)` demo: Core 72% B marked Provisional when no Tail-Cut is scanned. |
+| [demo-08-borderline-75.png](./demo-08-borderline-75.png) | **Demo — Borderline 75.5% Pass** | `Borderline 75% pass` demo: 75.5% B passes threshold without requiring Tail-Cut. |
+| [demo-09-needs-expert.png](./demo-09-needs-expert.png) | **Demo — Expert Override Required** | `Expert needed` demo: Core (68.1%) and Tail (66.4%) both under 75% — expert override required. |
+| [demo-10-tail-uncertain-expert.png](./demo-10-tail-uncertain-expert.png) | **Demo — Tail Also Uncertain** | `Tail also uncertain` demo: Core 73.2% A + Tail 71.8% B — expert override required. |
+| [demo-11-invalid-core.png](./demo-11-invalid-core.png) | **Demo — Invalid Sashibo Core** | `Invalid Sashibo core` demo: shows `Cannot Be Determined` modal and resets camera. |
+| [demo-12-invalid-tail.png](./demo-12-invalid-tail.png) | **Demo — Invalid Tail-Cut** | `Invalid Tail cut` demo: shows `Cannot Be Determined` modal during Tail-Cut scan and resets camera. |

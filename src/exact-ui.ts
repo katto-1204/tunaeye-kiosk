@@ -134,47 +134,11 @@ const runtime = {
     doc.getElementById('te-captured-preview')?.remove()
     const current = doc.getElementById('vid')
     if (!current) return
-    if (activeCameraSource === 'droidcam') {
-      stopLocalStream()
-      const base = normalizeDroidcamUrl(droidcamUrl)
-      const image = doc.createElement('img'); image.id = 'vid'; image.alt = 'Live DroidCam stream'; image.style.cssText = 'width:100%;height:100%;object-fit:contain'
-      image.crossOrigin = 'anonymous'
-      image.onerror = () => toast(`DroidCam unreachable at ${base}. Check phone IP & port (:4747) on this Wi-Fi.`, 1)
-      current.replaceWith(image)
-      image.src = `${base}/video`
-      const b = doc.getElementById('sh') as HTMLButtonElement | null; if (b) b.disabled = false
-      const label = doc.getElementById('vres'); if (label) label.textContent = `DroidCam (${base.replace(/^https?:\/\//, '')})`
-      return
-    }
-    if (activeCameraSource !== 'pi') {
-      stopLocalStream()
-      try {
-        if (!navigator.mediaDevices?.getUserMedia) throw new Error('Browser webcam blocked on HTTP. Use DroidCam URL (:4747), Upload image, or allow http://10.42.0.1:5000 in chrome://flags/#unsafely-treat-insecure-origin-as-secure.')
-        const videoConstraint: MediaTrackConstraints = activeCameraSource === 'device'
-          ? { width: { ideal: 1280 }, height: { ideal: 720 } }
-          : { deviceId: { exact: activeCameraSource }, width: { ideal: 1280 }, height: { ideal: 720 } }
-        localStream = await navigator.mediaDevices.getUserMedia({ video: videoConstraint, audio: false })
-        const video = doc.createElement('video'); video.id = 'vid'; video.autoplay = true; video.playsInline = true; video.muted = true
-        video.style.cssText = 'width:100%;height:100%;object-fit:cover'
-        current.replaceWith(video)
-        video.srcObject = localStream
-        await video.play().catch(() => { })
-        const track = localStream.getVideoTracks()[0], trSettings = track?.getSettings?.() ?? {}
-        const label = doc.getElementById('vres')
-        if (label) label.textContent = trSettings.width && trSettings.height ? `${trSettings.width}×${trSettings.height}` : (track?.label || 'Device camera')
-        const b = doc.getElementById('sh') as HTMLButtonElement | null; if (b) b.disabled = false
-        return
-      } catch (error) {
-        stopLocalStream()
-        toast(error instanceof Error ? error.message : 'Could not open selected camera.', 1)
-        const label = doc.getElementById('vres'); if (label) label.textContent = 'Camera blocked on HTTP'
-        return
-      }
-    }
+    activeCameraSource = 'pi'
     stopLocalStream()
     const image = doc.createElement('img'); image.id = 'vid'; image.alt = 'Live Raspberry Pi camera'; image.style.cssText = 'width:100%;height:100%;object-fit:contain'
     if (settings.mode === 'hosted-gateway') image.crossOrigin = 'use-credentials'
-    image.onerror = () => toast('Pi camera unavailable. Check station Wi-Fi or switch camera on the side.', 1)
+    image.onerror = () => toast('Pi camera unavailable. Check station Wi-Fi or chamber connection.', 1)
     current.replaceWith(image)
     if (settings.configured) { image.src = settings.streamUrl; const b = doc.getElementById('sh') as HTMLButtonElement; if (b) b.disabled = false }
     else toast('Configure the authenticated HTTPS gateway or open the Pi-hosted kiosk.', 1)
@@ -222,40 +186,8 @@ const runtime = {
         } else {
           blob = await capturePiImage(sample)
         }
-      } else if (activeCameraSource === 'droidcam') {
-        const base = normalizeDroidcamUrl(droidcamUrl)
-        try {
-          const res = await fetch(`${base}/shot.jpg`, { cache: 'no-store', signal: AbortSignal.timeout(4000) })
-          if (!res.ok) throw new Error(`DroidCam returned HTTP ${res.status}`)
-          const fetched = await res.blob()
-          if (!fetched.size) throw new Error('DroidCam returned empty snapshot.')
-          blob = fetched
-        } catch {
-          const imgEl = w.document.getElementById('vid') as HTMLImageElement | null
-          if (imgEl && imgEl.tagName === 'IMG' && imgEl.naturalWidth > 0) {
-            const canvas = w.document.createElement('canvas')
-            canvas.width = imgEl.naturalWidth; canvas.height = imgEl.naturalHeight
-            canvas.getContext('2d')!.drawImage(imgEl, 0, 0)
-            const captured = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.92))
-            if (!captured || captured.size === 0) throw new Error(`Could not capture frame from DroidCam (${base}).`)
-            blob = captured
-          } else {
-            throw new Error(`DroidCam snapshot failed at ${base}/shot.jpg. Check DroidCam Wi-Fi IP or use Upload image.`)
-          }
-        }
       } else {
-        const videoEl = w.document.getElementById('vid')
-        if (activeCameraSource !== 'pi' && videoEl?.tagName === 'VIDEO' && (videoEl as HTMLVideoElement).videoWidth > 0) {
-          const vid = videoEl as HTMLVideoElement
-          const canvas = w.document.createElement('canvas')
-          canvas.width = vid.videoWidth; canvas.height = vid.videoHeight
-          canvas.getContext('2d')!.drawImage(vid, 0, 0)
-          const captured = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.92))
-          if (!captured || captured.size === 0) throw new Error('Could not capture frame from selected camera.')
-          blob = captured
-        } else {
-          blob = await capturePiImage(sample)
-        }
+        blob = await capturePiImage(sample)
       }
       try {
         const bitmap = await createImageBitmap(blob)
@@ -546,96 +478,12 @@ const runtime = {
           const side = d.querySelector<HTMLElement>('.ltside'), shBtn = d.getElementById('sh')
           if (side && shBtn && !d.getElementById('cam-chooser')) {
             const box = d.createElement('div'); box.id = 'cam-chooser'
-            box.style.cssText = 'display:grid;gap:6px;margin:10px 0 6px;padding:10px 12px;border-radius:16px;background:#f4f8ff;border:1px solid #dbe6fa'
-            box.innerHTML = `<div style="display:flex;align-items:center;justify-content:space-between;gap:6px;font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.06em"><span>Camera source</span><div style="display:flex;gap:5px"><button type="button" id="cam-refresh" title="Ask permission & refresh cameras" style="padding:3px 9px;border-radius:999px;border:1px solid #cbd9ef;background:#fff;color:#475569;font:700 11px Inter,system-ui,sans-serif;cursor:pointer">Refresh ↻</button><button type="button" id="cam-trigger" title="Start selected camera" style="padding:3px 10px;border-radius:999px;border:0;background:#2159e8;color:#fff;font:700 11px Inter,system-ui,sans-serif;cursor:pointer">Trigger</button></div></div><select id="cam-select" aria-label="Available cameras" style="width:100%;height:34px;border-radius:10px;border:1px solid #cbd9ef;background:#fff;padding:0 10px;font:600 12.5px Inter,system-ui,sans-serif;color:#182842"></select><input id="cam-droid-url" type="url" placeholder="http://192.168.1.2:4747" value="${droidcamUrl}" aria-label="DroidCam URL" style="display:none;width:100%;height:32px;border-radius:10px;border:1px solid #cbd9ef;background:#fff;padding:0 10px;font:600 12px Inter,system-ui,sans-serif;color:#182842;box-sizing:border-box"><small id="cam-hint" style="display:none;font-size:11px;line-height:1.35;color:#64748b"></small>`
+            box.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:8px;margin:10px 0 6px;padding:9px 12px;border-radius:14px;background:#f4f8ff;border:1px solid #dbe6fa'
+            box.innerHTML = `<div style="display:grid;gap:2px"><span style="font-size:10.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em">Camera source</span><b style="font-size:12.5px;color:#182842">Raspberry Pi camera</b></div><button type="button" id="cam-refresh" title="Refresh Pi camera stream" style="padding:5px 11px;border-radius:999px;border:1px solid #cbd9ef;background:#fff;color:#182842;font:700 11.5px Inter,system-ui,sans-serif;cursor:pointer">Refresh ↻</button>`
             shBtn.before(box)
-            const sel = box.querySelector<HTMLSelectElement>('#cam-select')!
-            const refBtn = box.querySelector<HTMLButtonElement>('#cam-refresh')!
-            const trig = box.querySelector<HTMLButtonElement>('#cam-trigger')!
-            const dInput = box.querySelector<HTMLInputElement>('#cam-droid-url')!
-            const hint = box.querySelector<HTMLElement>('#cam-hint')!
-            const syncExtra = () => {
-              dInput.style.display = sel.value === 'droidcam' ? 'block' : 'none'
-              if (sel.value !== 'pi' && sel.value !== 'droidcam' && !navigator.mediaDevices?.getUserMedia) {
-                hint.style.display = 'block'
-                hint.textContent = 'Browser webcam blocked on HTTP. Use DroidCam URL (:4747) or allow this origin in chrome://flags/#unsafely-treat-insecure-origin-as-secure.'
-              } else {
-                hint.style.display = 'none'
-              }
-            }
-            const populate = async () => {
-              const opts: Array<[string, string]> = [['pi', 'Pi camera (:8080)'], ['droidcam', 'DroidCam URL (:4747)']]
-              if (navigator.mediaDevices?.enumerateDevices) {
-                try {
-                  const devs = (await navigator.mediaDevices.enumerateDevices()).filter(dev => dev.kind === 'videoinput')
-                  if (devs.length) devs.forEach((dev, idx) => opts.push([dev.deviceId || 'device', dev.label || `Camera ${idx + 1} (Browser)`]))
-                  else opts.push(['device', 'Browser / DroidCam Webcam'])
-                } catch { opts.push(['device', 'Browser / DroidCam Webcam']) }
-              } else {
-                opts.push(['device', 'Browser / DroidCam Webcam'])
-              }
-              sel.innerHTML = opts.map(([val, lbl]) => `<option value="${val}">${lbl}</option>`).join('')
-              sel.value = opts.some(([val]) => val === activeCameraSource) ? activeCameraSource : 'pi'
-              syncExtra()
-            }
-            const requestCamPermission = async () => {
-              if (!navigator.mediaDevices?.getUserMedia) {
-                const msg = 'Browser camera permission requires HTTPS or chrome://flags/#unsafely-treat-insecure-origin-as-secure.'
-                hint.style.display = 'block'; hint.textContent = msg; api(w).toast(msg, 1)
-                return false
-              }
-              try {
-                const probe = await navigator.mediaDevices.getUserMedia({ video: true, audio: false })
-                probe.getTracks().forEach(t => t.stop())
-                await populate()
-                return true
-              } catch (err) {
-                const msg = err instanceof Error ? err.message : 'Camera permission denied.'
-                hint.style.display = 'block'; hint.textContent = msg; api(w).toast(msg, 1)
-                return false
-              }
-            }
-            void populate()
-            navigator.mediaDevices?.addEventListener?.('devicechange', () => { if (box.isConnected) void populate() })
-            dInput.onchange = () => {
-              droidcamUrl = normalizeDroidcamUrl(dInput.value)
-              dInput.value = droidcamUrl
-              localStorage.setItem('tunaeye-droidcam-url', droidcamUrl)
-              if (sel.value === 'droidcam') void runtime.camera(w)
-            }
-            sel.onchange = async () => {
-              activeCameraSource = sel.value
-              localStorage.setItem('tunaeye-camera-source', activeCameraSource)
-              syncExtra()
-              if (activeCameraSource !== 'pi' && activeCameraSource !== 'droidcam') await requestCamPermission()
+            box.querySelector<HTMLButtonElement>('#cam-refresh')!.onclick = () => {
               void runtime.camera(w)
-            }
-            refBtn.onclick = async () => {
-              refBtn.disabled = true
-              try {
-                if (navigator.mediaDevices) {
-                  const ok = await requestCamPermission()
-                  if (ok) api(w).toast('Cameras refreshed')
-                } else {
-                  await populate()
-                  syncExtra()
-                  api(w).toast('Refreshed list (browser webcam blocked on HTTP)', 1)
-                }
-              } finally { if (refBtn.isConnected) refBtn.disabled = false }
-            }
-            trig.onclick = async () => {
-              if (sel.value === 'droidcam') {
-                droidcamUrl = normalizeDroidcamUrl(dInput.value)
-                dInput.value = droidcamUrl
-                localStorage.setItem('tunaeye-droidcam-url', droidcamUrl)
-              } else if (sel.value !== 'pi') {
-                const ok = await requestCamPermission()
-                if (!ok) return
-              }
-              activeCameraSource = sel.value
-              localStorage.setItem('tunaeye-camera-source', activeCameraSource)
-              syncExtra()
-              void runtime.camera(w)
+              api(w).toast('Pi camera refreshed')
             }
           }
         }
