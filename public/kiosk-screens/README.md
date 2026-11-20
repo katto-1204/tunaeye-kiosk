@@ -28,7 +28,7 @@ All final kiosk screenshots are saved in [`public/kiosk-screens/`](./). Each ima
 | File | Screen Name | Short Explanation |
 | :--- | :--- | :--- |
 | [05-core-capture.png](./05-core-capture.png) | **Sashibo Core Capture** | Step 2 of 4: Camera frame for scanning or uploading the Sashibo Core sample (`Demo mode` or live feed). |
-| [05b-invalid-sample-modal.png](./05b-invalid-sample-modal.png) | **Invalid Sample Modal (`Not a valid Sashibo core`)** | Alert dialog shown when a non-Sashibo object is scanned (`It seems like the scanned object is not a Sashibo sample. Camera reset — please scan again.`). |
+| [05b-invalid-sample-modal.png](./05b-invalid-sample-modal.png) | **Invalid Sample Modal (`Cannot Be Determined`)** | Alert dialog shown when a non-Sashibo object is scanned (`This image is not recognized as a valid Sashibo core. Camera reset — please scan again.`). |
 | [20-core-camera-live.png](./20-core-camera-live.png) | **Core Camera Screen** | Core capture view showing alignment guides, order ID, weight summary, **Scan sample**, and **Upload an image instead**. |
 | [06-core-result.png](./06-core-result.png) | **Core Result / Direct Grade** | Result view right after Sashibo Core inference when confidence is ≥ 75% (proceeds directly without needing a Tail-Cut). |
 | [07-tail-needed.png](./07-tail-needed.png) | **Tail-Cut Needed** | Shown when Sashibo Core confidence is `< 75%`; displays the Core photo, circular score gauge, threshold explanation, and **Capture tail cut** button. |

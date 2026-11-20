@@ -1,7 +1,7 @@
 const CACHE = 'tunaeye-v10-stable-offline'
 const PREFIX = 'tunaeye-'
 const APP_SHELL = [
-  '/', '/manifest.webmanifest', '/tunaeye-logo.svg', '/tunaeye-192.png', '/tunaeye-512.png',
+  '/', '/manifest.webmanifest', '/assets/applogo.svg', '/tunaeye-192.png', '/tunaeye-512.png',
   '/fonts/OpenRunde-Regular.woff2', '/fonts/OpenRunde-Medium.woff2',
   '/fonts/OpenRunde-Semibold.woff2', '/fonts/OpenRunde-Bold.woff2',
   '/fonts/exact-ui.css', '/fonts/instrument-serif-regular.ttf', '/fonts/instrument-serif-italic.ttf',
@@ -20,7 +20,7 @@ self.addEventListener('install', event => {
     const html = await response.clone().text()
     const bundles = [...html.matchAll(/(?:src|href)="([^"]+\.(?:js|css))"/g)].map(match => match[1])
     if (!bundles.some(path => path.startsWith('/assets/'))) throw Error('Offline caching requires a production build.')
-    const core = ['/manifest.webmanifest', '/tunaeye-logo.svg', '/tunaeye-192.png', '/tunaeye-512.png', ...bundles]
+    const core = ['/manifest.webmanifest', '/assets/applogo.svg', '/tunaeye-192.png', '/tunaeye-512.png', ...bundles]
     await cache.addAll(core)
     const optional = APP_SHELL.filter(path => path !== '/' && !core.includes(path))
     await Promise.allSettled(optional.map(path => cache.add(path)))
