@@ -1,0 +1,142 @@
+{
+  "voice": "en-US-BrianMultilingualNeural",
+  "service": "Microsoft Edge neural TTS (Python edge-tts)",
+  "sampleRate": 48000,
+  "channels": 2,
+  "acts": [
+    {
+      "act": 1,
+      "start": 0,
+      "duration": 10,
+      "file": "voice-01.wav",
+      "fragments": [
+        {
+          "start": 0.15,
+          "text": "Tuna grading depends on rare expert eyes, uneven light, and manual tallies.",
+          "sourceSeconds": 5.4
+        },
+        {
+          "start": 5.15,
+          "text": "Enter Tuna Eye. Offline-first vision on Raspberry Pi five.",
+          "sourceSeconds": 4.488
+        }
+      ]
+    },
+    {
+      "act": 2,
+      "start": 10,
+      "duration": 10,
+      "file": "voice-02.wav",
+      "fragments": [
+        {
+          "start": 10.15,
+          "text": "One tap starts grading.",
+          "sourceSeconds": 1.992
+        },
+        {
+          "start": 13.9,
+          "text": "Owen Pilongo signs in, checks readiness, and enters weight from twenty to two hundred kilograms.",
+          "sourceSeconds": 6.264
+        }
+      ]
+    },
+    {
+      "act": 3,
+      "start": 20,
+      "duration": 8,
+      "file": "voice-03.wav",
+      "fragments": [
+        {
+          "start": 20.15,
+          "text": "Place the Sashibo core in the controlled chamber, and capture live from the Pi camera.",
+          "sourceSeconds": 5.424
+        }
+      ]
+    },
+    {
+      "act": 4,
+      "start": 28,
+      "duration": 20,
+      "file": "voice-04.wav",
+      "fragments": [
+        {
+          "start": 28.15,
+          "text": "At seventy five percent or higher, Grade A or B goes straight to receipt.",
+          "sourceSeconds": 4.824
+        },
+        {
+          "start": 34.15,
+          "text": "Grade C or uncertain cores trigger a live Tail-Cut check.",
+          "sourceSeconds": 4.152
+        },
+        {
+          "start": 39.15,
+          "text": "Non-tuna samples are rejected cleanly.",
+          "sourceSeconds": 3
+        },
+        {
+          "start": 43.15,
+          "text": "Severe disagreement locks behind a Supervisor PIN.",
+          "sourceSeconds": 3.816
+        }
+      ]
+    },
+    {
+      "act": 5,
+      "start": 48,
+      "duration": 6,
+      "file": "voice-05.wav",
+      "fragments": [
+        {
+          "start": 48.15,
+          "text": "Bluetooth auto-prints a fifty eight millimeter receipt, then counts down three seconds.",
+          "sourceSeconds": 5.712
+        }
+      ]
+    },
+    {
+      "act": 6,
+      "start": 54,
+      "duration": 9,
+      "file": "voice-06.wav",
+      "fragments": [
+        {
+          "start": 54.15,
+          "text": "In the Grader Dashboard, review every session, inspect photos, and reprint anytime.",
+          "sourceSeconds": 6.312
+        }
+      ]
+    },
+    {
+      "act": 7,
+      "start": 63,
+      "duration": 15,
+      "file": "voice-07.wav",
+      "fragments": [
+        {
+          "start": 63.15,
+          "text": "Supervisors enter PIN one two three four for live station data, records, and devices.",
+          "sourceSeconds": 6.552
+        },
+        {
+          "start": 72.15,
+          "text": "Once Wi-Fi returns, local records sync to the Supabase cloud ledger.",
+          "sourceSeconds": 5.376
+        }
+      ]
+    },
+    {
+      "act": 8,
+      "start": 78,
+      "duration": 5,
+      "file": "voice-08.wav",
+      "fragments": [
+        {
+          "start": 78.15,
+          "text": "Tuna Eye. Sea beyond the cut.",
+          "sourceSeconds": 2.568
+        }
+      ]
+    }
+  ]
+}

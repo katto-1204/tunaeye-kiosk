@@ -1,0 +1,86 @@
+{
+  "voice": "en-US-BrianMultilingualNeural",
+  "service": "Microsoft Edge neural TTS (Python edge-tts)",
+  "files": [
+    {
+      "file": "voice-01.wav",
+      "seconds": 10,
+      "sampleRate": 48000,
+      "channels": 2,
+      "bitDepth": 16,
+      "peakDbFS": -8.010110384942665,
+      "rmsDbFS": -22.34192293025356,
+      "clippedSamples": 0
+    },
+    {
+      "file": "voice-02.wav",
+      "seconds": 10,
+      "sampleRate": 48000,
+      "channels": 2,
+      "bitDepth": 16,
+      "peakDbFS": -8.010110384942665,
+      "rmsDbFS": -23.64416856789118,
+      "clippedSamples": 0
+    },
+    {
+      "file": "voice-03.wav",
+      "seconds": 8,
+      "sampleRate": 48000,
+      "channels": 2,
+      "bitDepth": 16,
+      "peakDbFS": -8.009443803488205,
+      "rmsDbFS": -24.17340618559647,
+      "clippedSamples": 0
+    },
+    {
+      "file": "voice-04.wav",
+      "seconds": 20,
+      "sampleRate": 48000,
+      "channels": 2,
+      "bitDepth": 16,
+      "peakDbFS": -8.010110384942665,
+      "rmsDbFS": -23.553068350737128,
+      "clippedSamples": 0
+    },
+    {
+      "file": "voice-05.wav",
+      "seconds": 6,
+      "sampleRate": 48000,
+      "channels": 2,
+      "bitDepth": 16,
+      "peakDbFS": -8.010110384942665,
+      "rmsDbFS": -22.91090364574323,
+      "clippedSamples": 0
+    },
+    {
+      "file": "voice-06.wav",
+      "seconds": 9,
+      "sampleRate": 48000,
+      "channels": 2,
+      "bitDepth": 16,
+      "peakDbFS": -8.010110384942665,
+      "rmsDbFS": -23.771744454355336,
+      "clippedSamples": 0
+    },
+    {
+      "file": "voice-07.wav",
+      "seconds": 15,
+      "sampleRate": 48000,
+      "channels": 2,
+      "bitDepth": 16,
+      "peakDbFS": -8.010110384942665,
+      "rmsDbFS": -23.299011687696208,
+      "clippedSamples": 0
+    },
+    {
+      "file": "voice-08.wav",
+      "seconds": 5,
+      "sampleRate": 48000,
+      "channels": 2,
+      "bitDepth": 16,
+      "peakDbFS": -8.024120425416212,
+      "rmsDbFS": -27.590332051391098,
+      "clippedSamples": 0
+    }
+  ]
+}

@@ -31,7 +31,7 @@ export default defineConfig({
     port: 3000,
   },
   build: {
-    target: 'es2022',
+    target: 'es2020',
     cssMinify: true,
     sourcemap: false,
     rollupOptions: {

@@ -1,0 +1,755 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TunaEye v2.7.0 — Animated Project Presentation</title>
+  <link rel="icon" type="image/svg+xml" href="./assets/applogo.svg" />
+  <style>
+    :root {
+      --ocean-950: #060d1f;
+      --ocean-900: #0f172a;
+      --ocean-800: #103b70;
+      --cobalt: #2563eb;
+      --cobalt-bright: #3b8bff;
+      --cyan: #38bdf8;
+      --grade-a: #12a56a;
+      --grade-b: #eab308;
+      --grade-c: #ef4444;
+      --ink: #f8fafc;
+      --muted: #94a3b8;
+      --ease: cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      width: 100%; height: 100%;
+      overflow: hidden;
+      background: var(--ocean-950);
+      color: var(--ink);
+      font-family: 'Open Runde', Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;
+      user-select: none;
+    }
+
+    /* Ambient animated ocean backdrop */
+    .ocean-bg {
+      position: fixed; inset: 0; z-index: 0;
+      background:
+        radial-gradient(1100px 680px at 72% 18%, rgba(37, 99, 235, 0.36), transparent 60%),
+        radial-gradient(880px 580px at 18% 82%, rgba(16, 59, 112, 0.55), transparent 62%),
+        linear-gradient(155deg, #060d1f 0%, #0b1b3d 52%, #07122b 100%);
+      transition: filter 0.8s var(--ease);
+    }
+    .light-beam {
+      position: fixed; top: -20%; left: 52%; width: 520px; height: 140%;
+      background: linear-gradient(180deg, rgba(93, 187, 243, 0.14) 0%, rgba(37, 99, 235, 0.04) 55%, transparent 100%);
+      transform: rotate(14deg);
+      filter: blur(28px);
+      pointer-events: none; z-index: 1;
+      animation: beamSway 9s ease-in-out infinite alternate;
+    }
+    @keyframes beamSway {
+      from { transform: rotate(12deg) translateX(-18px); opacity: .75; }
+      to   { transform: rotate(17deg) translateX(24px); opacity: 1; }
+    }
+
+    .particles { position: fixed; inset: 0; pointer-events: none; z-index: 1; overflow: hidden; }
+    .particle {
+      position: absolute; border-radius: 50%;
+      background: rgba(125, 211, 252, 0.25);
+      animation: floatUp linear infinite;
+    }
+    @keyframes floatUp {
+      from { transform: translateY(105vh) scale(0.7); opacity: 0; }
+      15% { opacity: 0.65; }
+      85% { opacity: 0.45; }
+      to { transform: translateY(-10vh) scale(1.2); opacity: 0; }
+    }
+
+    /* Top HUD */
+    .hud-top {
+      position: fixed; top: 18px; left: 28px; right: 28px; z-index: 20;
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+    }
+    .brand-pill {
+      display: inline-flex; align-items: center; gap: 10px;
+      padding: 7px 14px 7px 9px; border-radius: 999px;
+      background: rgba(15, 23, 42, 0.72);
+      border: 1px solid rgba(148, 163, 184, 0.22);
+      backdrop-filter: blur(12px);
+      font-size: 13.5px; font-weight: 700; letter-spacing: -0.01em;
+    }
+    .brand-pill img { width: 24px; height: 24px; border-radius: 7px; }
+    .brand-pill em { font-family: Georgia, 'Times New Roman', serif; font-style: italic; font-weight: 600; color: #7dd3fc; }
+    .act-pill {
+      padding: 7px 14px; border-radius: 999px;
+      background: rgba(37, 99, 235, 0.22);
+      border: 1px solid rgba(96, 165, 250, 0.4);
+      color: #bfdbfe; font-size: 12.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+      backdrop-filter: blur(12px);
+    }
+
+    /* Stage */
+    .stage {
+      position: fixed; inset: 70px 32px 84px; z-index: 10;
+      display: grid; grid-template-columns: 0.92fr 1.28fr; align-items: center; gap: 36px;
+      max-width: 1440px; margin: 0 auto;
+    }
+    .stage.hero-center {
+      grid-template-columns: 1fr; text-align: center; justify-items: center;
+    }
+
+    /* Left narrative column */
+    .copy-col {
+      display: grid; gap: 16px; align-content: center;
+      transition: opacity 0.55s var(--ease), transform 0.65s var(--ease);
+    }
+    .copy-col.enter { opacity: 0; transform: translateY(22px); }
+    .kicker {
+      display: inline-flex; align-items: center; gap: 8px; width: fit-content;
+      padding: 5px 12px; border-radius: 999px;
+      background: rgba(56, 189, 248, 0.14); border: 1px solid rgba(56, 189, 248, 0.35);
+      color: #7dd3fc; font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+    }
+    .hero-center .kicker { margin: 0 auto; }
+    .title {
+      font-size: clamp(32px, 3.8vw, 54px);
+      font-weight: 800; line-height: 1.06; letter-spacing: -0.03em;
+    }
+    .title em {
+      font-family: Georgia, 'Times New Roman', serif; font-style: italic; font-weight: 600;
+      background: linear-gradient(120deg, #93c5fd, #38bdf8);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+    .desc {
+      font-size: clamp(15px, 1.35vw, 19px); line-height: 1.55; color: #cbd5e1; max-width: 560px;
+    }
+    .hero-center .desc { margin: 0 auto; max-width: 640px; }
+
+    .bullets {
+      display: grid; gap: 9px; margin-top: 4px;
+    }
+    .bullet {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 14px; border-radius: 14px;
+      background: rgba(15, 23, 42, 0.62);
+      border: 1px solid rgba(148, 163, 184, 0.18);
+      font-size: 14px; font-weight: 600; color: #e2e8f0;
+      backdrop-filter: blur(8px);
+      opacity: 0; transform: translateX(-14px);
+      animation: slideInBullet 0.5s var(--ease) forwards;
+    }
+    .bullet-dot {
+      width: 10px; height: 10px; border-radius: 50%; flex: none;
+      background: var(--cobalt-bright); box-shadow: 0 0 12px var(--cobalt-bright);
+    }
+    .bullet-dot.a { background: var(--grade-a); box-shadow: 0 0 12px var(--grade-a); }
+    .bullet-dot.b { background: var(--grade-b); box-shadow: 0 0 12px var(--grade-b); }
+    .bullet-dot.c { background: var(--grade-c); box-shadow: 0 0 12px var(--grade-c); }
+    @keyframes slideInBullet {
+      to { opacity: 1; transform: translateX(0); }
+    }
+
+    /* Right tablet / visual showcase */
+    .visual-col {
+      position: relative; display: flex; align-items: center; justify-content: center;
+      height: 100%; perspective: 1400px;
+    }
+    .tablet-bezel {
+      position: relative;
+      width: min(100%, 780px);
+      padding: 12px; border-radius: 26px;
+      background: linear-gradient(145deg, #1e293b, #0f172a);
+      border: 1.5px solid rgba(148, 163, 184, 0.28);
+      box-shadow:
+        0 40px 90px -20px rgba(0, 0, 0, 0.7),
+        0 0 80px -24px rgba(37, 99, 235, 0.45);
+      transform: rotateY(-4deg) rotateX(1.5deg) scale(1);
+      transition: transform 0.85s var(--ease), opacity 0.5s var(--ease), box-shadow 0.8s var(--ease);
+    }
+    .tablet-bezel.tr-zoom { animation: kenBurns 6.5s ease-out forwards; }
+    @keyframes kenBurns {
+      from { transform: rotateY(-5deg) rotateX(2deg) scale(0.95); }
+      to   { transform: rotateY(-1deg) rotateX(0.5deg) scale(1.015); }
+    }
+    .tablet-bezel.tr-flip { animation: cardFlip 0.7s var(--ease) forwards; }
+    @keyframes cardFlip {
+      from { opacity: 0; transform: rotateY(14deg) scale(0.92); }
+      to   { opacity: 1; transform: rotateY(-3deg) scale(1); }
+    }
+    .tablet-bezel.glow-a { box-shadow: 0 40px 95px -20px rgba(18, 165, 106, 0.55), 0 0 90px -18px rgba(18, 165, 106, 0.45); }
+    .tablet-bezel.glow-b { box-shadow: 0 40px 95px -20px rgba(234, 179, 8, 0.48), 0 0 90px -18px rgba(234, 179, 8, 0.4); }
+    .tablet-bezel.glow-c { box-shadow: 0 40px 95px -20px rgba(239, 68, 68, 0.52), 0 0 90px -18px rgba(239, 68, 68, 0.45); }
+
+    .screen-frame {
+      position: relative; width: 100%; aspect-ratio: 1280 / 800;
+      overflow: hidden; border-radius: 16px; background: #0b1220;
+    }
+    .screen-frame img {
+      width: 100%; height: 100%; object-fit: cover; object-position: top center; display: block;
+    }
+    .scan-line {
+      position: absolute; left: 0; right: 0; height: 3px;
+      background: linear-gradient(90deg, transparent, #38bdf8, #fff, #38bdf8, transparent);
+      box-shadow: 0 0 18px 4px rgba(56, 189, 248, 0.65);
+      animation: scanSweep 2.1s ease-in-out infinite;
+      display: none;
+    }
+    .scan-line.on { display: block; }
+    @keyframes scanSweep {
+      0% { top: 8%; opacity: 0; }
+      15% { opacity: 1; }
+      85% { opacity: 1; }
+      100% { top: 90%; opacity: 0; }
+    }
+
+    /* Hero / Outro Logo Lockup */
+    .hero-logo-wrap {
+      display: grid; gap: 18px; justify-items: center;
+      animation: heroPop 0.9s var(--ease) forwards;
+    }
+    @keyframes heroPop {
+      from { opacity: 0; transform: scale(0.88) translateY(20px); }
+      to   { opacity: 1; transform: scale(1) translateY(0); }
+    }
+    .hero-icon {
+      width: 124px; height: 124px; border-radius: 28px;
+      box-shadow: 0 28px 70px -12px rgba(37, 99, 235, 0.75);
+      animation: floatLogo 3.6s ease-in-out infinite;
+    }
+    @keyframes floatLogo {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-9px); }
+    }
+
+    /* Bottom controls */
+    .hud-bottom {
+      position: fixed; bottom: 18px; left: 28px; right: 28px; z-index: 20;
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+    }
+    .progress-track {
+      flex: 1; height: 6px; border-radius: 999px;
+      background: rgba(148, 163, 184, 0.22); overflow: hidden; cursor: pointer;
+    }
+    .progress-fill {
+      height: 100%; width: 0%; border-radius: 999px;
+      background: linear-gradient(90deg, #38bdf8, #2563eb);
+      transition: width 0.25s linear;
+    }
+    .ctrl-group { display: flex; align-items: center; gap: 8px; }
+    .cbtn {
+      height: 38px; padding: 0 14px; border-radius: 999px;
+      border: 1px solid rgba(148, 163, 184, 0.28);
+      background: rgba(15, 23, 42, 0.78); color: #f8fafc;
+      font: 700 13px Inter, system-ui, sans-serif;
+      cursor: pointer; backdrop-filter: blur(10px);
+      display: inline-flex; align-items: center; gap: 6px;
+      transition: transform 0.15s ease, background 0.15s ease;
+    }
+    .cbtn:hover { background: rgba(37, 99, 235, 0.45); transform: translateY(-1px); }
+    .cbtn.primary { background: linear-gradient(135deg, #3b8bff, #1d5ef0); border-color: transparent; }
+    .time-lbl { font-size: 12.5px; font-weight: 700; color: var(--muted); min-width: 78px; text-align: right; }
+
+    /* Start overlay so browser allows Web Audio API cleanly */
+    .start-overlay {
+      position: fixed; inset: 0; z-index: 50;
+      background: rgba(6, 13, 31, 0.86); backdrop-filter: blur(16px);
+      display: grid; place-items: center; text-align: center;
+      transition: opacity 0.45s ease;
+    }
+    .start-overlay.hide { opacity: 0; pointer-events: none; }
+    .start-card {
+      display: grid; gap: 18px; justify-items: center; padding: 40px 44px;
+      border-radius: 32px; background: rgba(15, 23, 42, 0.88);
+      border: 1px solid rgba(148, 163, 184, 0.26);
+      box-shadow: 0 40px 100px -20px rgba(0, 0, 0, 0.75);
+      max-width: 520px;
+    }
+    .start-btn {
+      height: 54px; padding: 0 32px; border-radius: 999px; border: 0;
+      background: linear-gradient(135deg, #3b8bff, #1d5ef0); color: #fff;
+      font: 800 16px Inter, system-ui, sans-serif; cursor: pointer;
+      box-shadow: 0 16px 36px -10px rgba(37, 99, 235, 0.7);
+    }
+
+    @media (max-width: 960px) {
+      .stage { grid-template-columns: 1fr; inset: 64px 18px 76px; gap: 18px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="ocean-bg"></div>
+  <div class="light-beam"></div>
+  <div class="particles" id="particles"></div>
+
+  <header class="hud-top">
+    <div class="brand-pill">
+      <img src="./assets/applogo.svg" alt="TunaEye" />
+      <span>Tuna<em>Eye</em> · v2.7.0</span>
+    </div>
+    <div class="act-pill" id="act-pill">Intro</div>
+  </header>
+
+  <main class="stage hero-center" id="stage"></main>
+
+  <footer class="hud-bottom">
+    <div class="ctrl-group">
+      <button class="cbtn" id="btn-prev" title="Previous (Left Arrow)">Prev</button>
+      <button class="cbtn primary" id="btn-play" title="Play / Pause (Space)">Pause</button>
+      <button class="cbtn" id="btn-next" title="Next (Right Arrow)">Next</button>
+      <button class="cbtn" id="btn-sound" title="Toggle Sound (M)">Sound: ON</button>
+    </div>
+    <div class="progress-track" id="progress-track" title="Click to jump">
+      <div class="progress-fill" id="progress-fill"></div>
+    </div>
+    <div class="time-lbl" id="slide-counter">1 / 16</div>
+  </footer>
+
+  <div class="start-overlay" id="start-overlay">
+    <div class="start-card">
+      <img src="./assets/applogo.svg" class="hero-icon" alt="TunaEye Icon" />
+      <h1 style="font-size:34px;font-weight:800;letter-spacing:-.03em">TunaEye <em>v2.7.0</em></h1>
+      <p style="color:#cbd5e1;font-size:15px;line-height:1.5">
+        Animated Product Presentation with synthesized Web Audio SFX, transitions, live kiosk screens, all grading outcomes, Grader Dashboard, Admin Console, and Cloud Sync.
+      </p>
+      <button class="start-btn" id="btn-start">Start Animated Presentation</button>
+      <span style="font-size:12px;color:#64748b">Space = Play/Pause · Arrow Keys = Navigate · M = Mute</span>
+    </div>
+  </div>
+
+  <script>
+    // Floating ocean particles
+    const pWrap = document.getElementById('particles');
+    for (let i = 0; i < 18; i++) {
+      const p = document.createElement('div');
+      p.className = 'particle';
+      const sz = 4 + (i % 5) * 3;
+      p.style.cssText = `width:${sz}px;height:${sz}px;left:${(i * 19) % 100}%;animation-duration:${9 + (i % 6) * 2.5}s;animation-delay:${-(i * 1.1)}s`;
+      pWrap.appendChild(p);
+    }
+
+    // Web Audio API Sound Engine (100% offline, zero external files)
+    class SoundFX {
+      constructor() {
+        this.ctx = null;
+        this.muted = false;
+      }
+      ensure() {
+        if (this.muted) return null;
+        if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+        if (this.ctx.state === 'suspended') this.ctx.resume();
+        return this.ctx;
+      }
+      tone(freq, dur, type = 'sine', vol = 0.12, delay = 0) {
+        const ctx = this.ensure();
+        if (!ctx) return;
+        const t = ctx.currentTime + delay;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, t);
+        gain.gain.setValueAtTime(0.0001, t);
+        gain.gain.exponentialRampToValueAtTime(vol, t + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(t);
+        osc.stop(t + dur + 0.02);
+      }
+      play(cue) {
+        if (this.muted) return;
+        switch (cue) {
+          case 'intro':
+            this.tone(130.81, 0.9, 'sine', 0.14, 0);
+            this.tone(523.25, 0.45, 'triangle', 0.09, 0.12);
+            this.tone(659.25, 0.55, 'sine', 0.09, 0.26);
+            break;
+          case 'tap':
+            this.tone(680, 0.07, 'sine', 0.1, 0);
+            this.tone(920, 0.08, 'sine', 0.06, 0.04);
+            break;
+          case 'keypad':
+            this.tone(540, 0.05, 'triangle', 0.08, 0);
+            this.tone(620, 0.05, 'triangle', 0.08, 0.11);
+            this.tone(740, 0.07, 'triangle', 0.09, 0.22);
+            break;
+          case 'glide':
+            this.tone(240, 0.32, 'sine', 0.08, 0);
+            this.tone(360, 0.35, 'sine', 0.07, 0.14);
+            break;
+          case 'shutter':
+            this.tone(1100, 0.04, 'square', 0.05, 0);
+            this.tone(440, 0.25, 'sine', 0.08, 0.08);
+            this.tone(880, 0.25, 'sine', 0.06, 0.18);
+            break;
+          case 'gradeA':
+            this.tone(523.25, 0.35, 'triangle', 0.1, 0);
+            this.tone(659.25, 0.35, 'triangle', 0.1, 0.09);
+            this.tone(783.99, 0.55, 'sine', 0.12, 0.18);
+            break;
+          case 'gradeB':
+            this.tone(440, 0.3, 'triangle', 0.09, 0);
+            this.tone(554.37, 0.45, 'sine', 0.1, 0.1);
+            break;
+          case 'tail':
+            this.tone(392, 0.25, 'sine', 0.09, 0);
+            this.tone(440, 0.35, 'sine', 0.09, 0.14);
+            break;
+          case 'lift':
+            this.tone(392, 0.2, 'triangle', 0.09, 0);
+            this.tone(523.25, 0.25, 'triangle', 0.1, 0.11);
+            this.tone(659.25, 0.45, 'sine', 0.11, 0.22);
+            break;
+          case 'alert':
+            this.tone(196, 0.16, 'sawtooth', 0.06, 0);
+            this.tone(164.81, 0.24, 'sawtooth', 0.06, 0.15);
+            break;
+          case 'lock':
+            this.tone(480, 0.05, 'triangle', 0.08, 0);
+            this.tone(480, 0.05, 'triangle', 0.08, 0.09);
+            this.tone(480, 0.05, 'triangle', 0.08, 0.18);
+            this.tone(720, 0.25, 'sine', 0.1, 0.27);
+            break;
+          case 'print':
+            for (let i = 0; i < 6; i++) this.tone(320 + i * 35, 0.04, 'square', 0.03, i * 0.05);
+            this.tone(783.99, 0.3, 'sine', 0.09, 0.34);
+            break;
+          case 'sync':
+            this.tone(523.25, 0.18, 'sine', 0.08, 0);
+            this.tone(659.25, 0.18, 'sine', 0.08, 0.08);
+            this.tone(783.99, 0.22, 'sine', 0.09, 0.16);
+            this.tone(1046.5, 0.4, 'sine', 0.1, 0.24);
+            break;
+        }
+      }
+    }
+
+    const sfx = new SoundFX();
+
+    const slides = [
+      {
+        act: 'Act 1 · Brand Hook',
+        hero: true,
+        dur: 5200,
+        cue: 'intro',
+        kicker: 'TunaEye v2.7.0',
+        title: 'Sea <em>Beyond</em> the Cut.',
+        desc: "We don't replace the expert eye. We extend its reach. Built on expert knowledge and enhanced by computer vision.",
+      },
+      {
+        act: 'Act 1 · Landing & Kiosk Entry',
+        dur: 5200,
+        cue: 'tap',
+        tr: 'tr-zoom',
+        kicker: 'Public Portal -> Kiosk PWA',
+        title: 'One Tap to <em>Start Grading</em>',
+        desc: 'Desktop visitors explore station specs and install the PWA; tablets and Pi hosts open the kiosk welcome screen directly.',
+        img: './kiosk-screens/00-landing-page.png',
+        bullets: [
+          { txt: 'Runs 100% offline on Raspberry Pi 5', cls: '' },
+          { txt: 'Version badge + live station readiness check', cls: 'a' }
+        ]
+      },
+      {
+        act: 'Act 2 · Station Welcome',
+        dur: 4800,
+        cue: 'tap',
+        tr: 'tr-flip',
+        kicker: 'Step 0 · Welcome',
+        title: 'Ready at <em>Station 01</em>',
+        desc: 'Shows live station readiness, v2.7 changelog, and selective per-grader cloud sync right from the start screen.',
+        img: './kiosk-screens/01-welcome.png',
+        bullets: [
+          { txt: '4-step workflow bar clearly visible', cls: '' },
+          { txt: 'Per-grader Sync modal queues cleanly offline', cls: 'a' }
+        ]
+      },
+      {
+        act: 'Act 2 · Grader Sign-In & Weight',
+        dur: 5200,
+        cue: 'keypad',
+        tr: 'tr-zoom',
+        kicker: 'Step 1 & 2 · Identity + Scale',
+        title: 'Fast Sign-In & <em>Weight Entry</em>',
+        desc: 'Operators enter their name (up to 15 chars), pre-pair the 58mm Bluetooth printer, and enter fish weight (15–200 kg).',
+        img: './kiosk-screens/03-weight-entry.png',
+        bullets: [
+          { txt: 'Pre-flight check verifies Pi network, camera & ONNX models', cls: '' },
+          { txt: 'Touch numeric keypad enforces 15–200 kg range', cls: 'b' }
+        ]
+      },
+      {
+        act: 'Act 3 · Guided Chamber',
+        dur: 4500,
+        cue: 'glide',
+        tr: 'tr-flip',
+        kicker: '5000K Chamber Tutorial',
+        title: 'Standardized <em>Placement</em>',
+        desc: 'A 3-step illustrated guide ensures clean, repeatable lighting — and auto-skips after 2 sessions in 30 minutes.',
+        img: './kiosk-screens/04-placement-guide.png',
+        bullets: [
+          { txt: '2-second auto-advance across Steps 1–3', cls: '' },
+          { txt: 'Close / Skip button sits cleanly next to Next', cls: 'a' }
+        ]
+      },
+      {
+        act: 'Act 4 · Raspberry Pi Edge Scan',
+        dur: 5000,
+        cue: 'shutter',
+        tr: 'tr-zoom',
+        scan: true,
+        kicker: 'Raspberry Pi Camera Only',
+        title: 'Sashibo Core <em>Edge AI</em>',
+        desc: 'Locked directly to the Raspberry Pi chamber camera for consistent, glare-free Sashibo Core inference.',
+        img: './kiosk-screens/20-core-camera-live.png',
+        bullets: [
+          { txt: 'Same-origin Pi /snapshot and /grade inference', cls: '' },
+          { txt: 'Zero reliance on phone webcams', cls: 'a' }
+        ]
+      },
+      {
+        act: 'Act 4 · Guardrail (Invalid Scan)',
+        dur: 5000,
+        cue: 'alert',
+        tr: 'tr-flip',
+        kicker: 'Non-Tuna Protection',
+        title: 'Cannot Be <em>Determined</em>',
+        desc: 'If an empty tray, hand, or non-tuna object is scanned, TunaEye rejects it immediately and resets the camera.',
+        img: './kiosk-screens/05b-invalid-sample-modal.png',
+        glow: 'glow-c',
+        bullets: [
+          { txt: 'Discards temporary image automatically', cls: 'c' },
+          { txt: '2-second alert clears frame for instant rescan', cls: '' }
+        ]
+      },
+      {
+        act: 'Act 5 · Direct Grade A & Grade B',
+        dur: 5200,
+        cue: 'gradeA',
+        tr: 'tr-zoom',
+        kicker: 'Confidence >= 75% (A or B)',
+        title: 'Instant <em>Grade A</em> Result',
+        desc: 'Confident Sashibo Core scans (75%+) skip the Tail-Cut step and calculate total value (weight x rate) immediately.',
+        img: './kiosk-screens/demo-01-grade-a.png',
+        glow: 'glow-a',
+        bullets: [
+          { txt: 'Green Grade A (96.3%) · Yellow Grade B (94.0%)', cls: 'a' },
+          { txt: 'Ready to print 58mm thermal receipt in 1 tap', cls: '' }
+        ]
+      },
+      {
+        act: 'Act 5 · Tail-Cut Verification',
+        dur: 5200,
+        cue: 'tail',
+        tr: 'tr-flip',
+        kicker: 'Confidence < 75% or Grade C',
+        title: 'Dual-Cut <em>Verification</em>',
+        desc: 'Uncertain Core scans or Grade C trigger a Tail-Cut check — letting graders scan the Tail-Cut face or mark Provisional.',
+        img: './kiosk-screens/demo-03-grade-c-tailneed.png',
+        glow: 'glow-b',
+        bullets: [
+          { txt: 'No Tail-Cut (60%+) tags session PROVISIONAL', cls: 'b' },
+          { txt: 'Scan Tail-Cut combines both ONNX models', cls: '' }
+        ]
+      },
+      {
+        act: 'Act 5 · Tail-Cut Upgrades & Confirms',
+        dur: 5500,
+        cue: 'lift',
+        tr: 'tr-zoom',
+        kicker: 'Blended Decision Engine',
+        title: 'Tail-Cut <em>Lifts or Confirms</em>',
+        desc: 'Combining Core (71.5% B) with a prime Tail-Cut (93.8% A) upgrades the fish to Grade A — or confirms Red Grade C.',
+        img: './kiosk-screens/demo-05-tail-upgrades-a.png',
+        glow: 'glow-a',
+        bullets: [
+          { txt: 'Both Core & Tail evidence photos saved side-by-side', cls: 'a' },
+          { txt: 'Red Grade C card clearly highlights Processing Quality', cls: 'c' }
+        ]
+      },
+      {
+        act: 'Act 5 · Expert Authority (Black Card)',
+        dur: 5200,
+        cue: 'lock',
+        tr: 'tr-flip',
+        kicker: 'Human Authority Always Wins',
+        title: 'Manual <em>Override</em> Required',
+        desc: 'When both cuts fall under 75% or disagree (A vs C), the Black Card locks printing until an expert enters Supervisor PIN.',
+        img: './kiosk-screens/demo-09-needs-expert.png',
+        bullets: [
+          { txt: '2-column override records Grade, Reason & Actor', cls: '' },
+          { txt: 'Original model confidence stays preserved for audit', cls: 'b' }
+        ]
+      },
+      {
+        act: 'Act 6 · Receipt & 3s Next Fish',
+        dur: 5000,
+        cue: 'print',
+        tr: 'tr-zoom',
+        kicker: '58mm Bluetooth POS-58',
+        title: 'Print & <em>Auto-Next</em>',
+        desc: 'Auto-prints via Web Bluetooth ESC/POS in 700ms when paired, then counts 3, 2, 1 straight to the next fish.',
+        img: './kiosk-screens/10-receipt.png',
+        bullets: [
+          { txt: 'Full peso breakdown + Core & Tail metrics on ticket', cls: '' },
+          { txt: 'Skip confirmation keeps record safely stored locally', cls: 'a' }
+        ]
+      },
+      {
+        act: 'Act 7 · Grader Dashboard',
+        dur: 5200,
+        cue: 'tap',
+        tr: 'tr-flip',
+        kicker: 'Operator Workspace',
+        title: 'Grader <em>Dashboard</em>',
+        desc: 'Graders view their own records by default (or switch to All device records), inspect photos, and reprint receipts.',
+        img: './kiosk-screens/19-grader-dashboard.png',
+        bullets: [
+          { txt: 'My records / All device records filter + pagination', cls: '' },
+          { txt: 'New graders start clean with "No records yet"', cls: 'a' }
+        ]
+      },
+      {
+        act: 'Act 8 · Admin Console',
+        dur: 5600,
+        cue: 'lock',
+        tr: 'tr-zoom',
+        kicker: 'PIN 1234 · Full Station Control',
+        title: 'Admin <em>Overview & Audit</em>',
+        desc: 'Supervisors filter across 7 time ranges, inspect evidence & rates, manage Expert Graders, test Pi hardware, and export CSV.',
+        img: './kiosk-screens/13-admin-overview.png',
+        bullets: [
+          { txt: 'Overview, Records, Prices, Expert Graders, Devices, Audit', cls: '' },
+          { txt: 'Secret Grade A presentation safety net next to Logout', cls: 'a' }
+        ]
+      },
+      {
+        act: 'Act 8 · Kiosk + Mobile Cloud Sync',
+        dur: 5200,
+        cue: 'sync',
+        tr: 'tr-flip',
+        kicker: 'Shared Supabase Ledger',
+        title: 'Offline-First <em>Cloud Sync</em>',
+        desc: 'Both Kiosk (source: kiosk) and Mobile App (source: mobile) sync records and private JPEG evidence to one shared ledger.',
+        img: './kiosk-screens/01b-welcome-sync-modal.png',
+        bullets: [
+          { txt: 'Per-grader selective sync + Slow Wi-Fi background mode', cls: '' },
+          { txt: 'Verified row + storage persistence before marking Synced', cls: 'a' }
+        ]
+      },
+      {
+        act: 'Outro · TunaEye v2.7.0',
+        hero: true,
+        dur: 6000,
+        cue: 'intro',
+        kicker: 'Raspberry Pi 5 · Kiosk PWA · Mobile Companion',
+        title: 'Tuna<em>Eye</em> — Sea Beyond the Cut.',
+        desc: 'Built on expert knowledge. Enhanced by computer vision.',
+      }
+    ];
+
+    const stage = document.getElementById('stage');
+    const actPill = document.getElementById('act-pill');
+    const progFill = document.getElementById('progress-fill');
+    const slideCounter = document.getElementById('slide-counter');
+    const btnPlay = document.getElementById('btn-play');
+    const btnSound = document.getElementById('btn-sound');
+
+    let idx = 0;
+    let playing = false;
+    let timer = null;
+
+    function render(i, playSound = true) {
+      idx = (i + slides.length) % slides.length;
+      const s = slides[idx];
+      actPill.textContent = s.act;
+      slideCounter.textContent = `${idx + 1} / ${slides.length}`;
+      progFill.style.width = `${((idx + 1) / slides.length) * 100}%`;
+
+      if (s.hero) {
+        stage.className = 'stage hero-center';
+        stage.innerHTML = `
+          <div class="hero-logo-wrap">
+            <img src="./assets/applogo.svg" class="hero-icon" alt="TunaEye" />
+            <span class="kicker">${s.kicker}</span>
+            <h1 class="title">${s.title}</h1>
+            <p class="desc">${s.desc}</p>
+          </div>
+        `;
+      } else {
+        stage.className = 'stage';
+        stage.innerHTML = `
+          <div class="copy-col enter" id="copy-col">
+            <span class="kicker">${s.kicker}</span>
+            <h1 class="title">${s.title}</h1>
+            <p class="desc">${s.desc}</p>
+            <div class="bullets">
+              ${(s.bullets || []).map((b, bi) => `
+                <div class="bullet" style="animation-delay:${0.16 + bi * 0.14}s">
+                  <span class="bullet-dot ${b.cls}"></span>
+                  <span>${b.txt}</span>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+          <div class="visual-col">
+            <div class="tablet-bezel ${s.tr || 'tr-zoom'} ${s.glow || ''}">
+              <div class="screen-frame">
+                <img src="${s.img}" alt="${s.act}" />
+                <div class="scan-line ${s.scan ? 'on' : ''}"></div>
+              </div>
+            </div>
+          </div>
+        `;
+        requestAnimationFrame(() => document.getElementById('copy-col')?.classList.remove('enter'));
+      }
+
+      if (playSound && s.cue) sfx.play(s.cue);
+      scheduleNext();
+    }
+
+    function scheduleNext() {
+      clearTimeout(timer);
+      if (!playing) return;
+      timer = setTimeout(() => {
+        if (idx < slides.length - 1) render(idx + 1, true);
+        else { playing = false; btnPlay.textContent = 'Replay'; }
+      }, slides[idx].dur || 5000);
+    }
+
+    document.getElementById('btn-start').onclick = () => {
+      document.getElementById('start-overlay').classList.add('hide');
+      playing = true;
+      btnPlay.textContent = 'Pause';
+      render(0, true);
+    };
+    btnPlay.onclick = () => {
+      if (!playing && idx === slides.length - 1) { playing = true; btnPlay.textContent = 'Pause'; render(0, true); return; }
+      playing = !playing;
+      btnPlay.textContent = playing ? 'Pause' : 'Play';
+      if (playing) scheduleNext();
+      else clearTimeout(timer);
+    };
+    document.getElementById('btn-prev').onclick = () => { playing = false; btnPlay.textContent = 'Play'; render(idx - 1, true); };
+    document.getElementById('btn-next').onclick = () => { playing = false; btnPlay.textContent = 'Play'; render(idx + 1, true); };
+    btnSound.onclick = () => {
+      sfx.muted = !sfx.muted;
+      btnSound.textContent = sfx.muted ? 'Sound: OFF' : 'Sound: ON';
+    };
+    document.getElementById('progress-track').onclick = (e) => {
+      const rect = e.currentTarget.getBoundingClientRect();
+      const ratio = Math.max(0, Math.min(0.999, (e.clientX - rect.left) / rect.width));
+      render(Math.floor(ratio * slides.length), true);
+    };
+    addEventListener('keydown', (e) => {
+      if (e.code === 'Space') { e.preventDefault(); btnPlay.click(); }
+      else if (e.code === 'ArrowRight') document.getElementById('btn-next').click();
+      else if (e.code === 'ArrowLeft') document.getElementById('btn-prev').click();
+      else if (e.key.toLowerCase() === 'm') btnSound.click();
+    });
+
+    render(0, false);
+  </script>
+</body>
+</html>

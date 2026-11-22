@@ -22,6 +22,32 @@
 
 <body>
   <div id="root"></div>
+  <script>
+    (function () {
+      function recover() {
+        if (window.__tunaeyeBooted) return;
+        try {
+          if ('serviceWorker' in navigator && !sessionStorage.getItem('tunaeye-sw-recovered')) {
+            sessionStorage.setItem('tunaeye-sw-recovered', '1');
+            Promise.all([
+              navigator.serviceWorker.getRegistrations().then(function (regs) {
+                return Promise.all(regs.map(function (r) { return r.unregister(); }));
+              }),
+              'caches' in window ? caches.keys().then(function (keys) {
+                return Promise.all(keys.filter(function (k) { return k.indexOf('tunaeye-') === 0; }).map(function (k) { return caches.delete(k); }));
+              }) : Promise.resolve()
+            ]).then(function () { location.reload(); });
+            return;
+          }
+        } catch (e) {}
+        document.body.innerHTML = '<main style="min-height:100dvh;display:grid;place-items:center;padding:24px;background:#f4f7ff;font-family:system-ui,sans-serif;color:#182842"><section style="max-width:440px;padding:28px;border-radius:24px;background:#fff;border:1px solid #dce6f6;text-align:center"><h1 style="margin:0 0 8px;font-size:22px">TunaEye could not load</h1><p style="margin:0 0 18px;font-size:14px;color:#5b6b84">A cached or missing bundle prevented the kiosk from starting. Reload to fetch the latest build.</p><button onclick="location.reload()" style="height:44px;padding:0 22px;border-radius:999px;border:0;background:#2563ff;color:#fff;font:600 14px system-ui,sans-serif;cursor:pointer">Reload</button></section></main>';
+      }
+      window.addEventListener('error', function (e) {
+        if (e && e.target && (e.target.tagName === 'SCRIPT' || (e.target.tagName === 'LINK' && e.target.rel === 'stylesheet'))) recover();
+      }, true);
+      setTimeout(recover, 6000);
+    })();
+  </script>
   <script type="module" src="/src/main.tsx"></script>
 </body>
 

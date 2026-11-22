@@ -1,0 +1,145 @@
+{
+  "description": "Original deterministic offline synth; 98 BPM C major with suspended bridge at 67–91 seconds.",
+  "files": [
+    {
+      "file": "ocean-bed-98bpm.wav",
+      "seconds": 160,
+      "sampleRate": 48000,
+      "channels": 2,
+      "bitDepth": 16,
+      "peakDbFS": -2.4987747321659985,
+      "rmsDbFS": -16.05537434301407,
+      "clippedSamples": 0
+    },
+    {
+      "file": "intro.wav",
+      "seconds": 3.4,
+      "sampleRate": 48000,
+      "channels": 2,
+      "bitDepth": 16,
+      "peakDbFS": -6.935749724493126,
+      "rmsDbFS": -24.053179582490124,
+      "clippedSamples": 0
+    },
+    {
+      "file": "tap.wav",
+      "seconds": 0.23,
+      "sampleRate": 48000,
+      "channels": 2,
+      "bitDepth": 16,
+      "peakDbFS": -14,
+      "rmsDbFS": -35.065694936320234,
+      "clippedSamples": 0
+    },
+    {
+      "file": "keypad.wav",
+      "seconds": 1.35,
+      "sampleRate": 48000,
+      "channels": 2,
+      "bitDepth": 16,
+      "peakDbFS": -7.95880017344075,
+      "rmsDbFS": -25.31851031224869,
+      "clippedSamples": 0
+    },
+    {
+      "file": "glide.wav",
+      "seconds": 2,
+      "sampleRate": 48000,
+      "channels": 2,
+      "bitDepth": 16,
+      "peakDbFS": -7.958800173440752,
+      "rmsDbFS": -23.17028833059603,
+      "clippedSamples": 0
+    },
+    {
+      "file": "shutter.wav",
+      "seconds": 0.85,
+      "sampleRate": 48000,
+      "channels": 2,
+      "bitDepth": 16,
+      "peakDbFS": -6.935749724493126,
+      "rmsDbFS": -27.65008136008177,
+      "clippedSamples": 0
+    },
+    {
+      "file": "gradeA.wav",
+      "seconds": 2.4,
+      "sampleRate": 48000,
+      "channels": 2,
+      "bitDepth": 16,
+      "peakDbFS": -6.935749724493126,
+      "rmsDbFS": -24.599776942462007,
+      "clippedSamples": 0
+    },
+    {
+      "file": "gradeB.wav",
+      "seconds": 2.4,
+      "sampleRate": 48000,
+      "channels": 2,
+      "bitDepth": 16,
+      "peakDbFS": -6.935749724493126,
+      "rmsDbFS": -23.673806211506978,
+      "clippedSamples": 0
+    },
+    {
+      "file": "tail.wav",
+      "seconds": 2.4,
+      "sampleRate": 48000,
+      "channels": 2,
+      "bitDepth": 16,
+      "peakDbFS": -7.958800173440752,
+      "rmsDbFS": -20.870296314014055,
+      "clippedSamples": 0
+    },
+    {
+      "file": "lift.wav",
+      "seconds": 2.7,
+      "sampleRate": 48000,
+      "channels": 2,
+      "bitDepth": 16,
+      "peakDbFS": -6.935749724493126,
+      "rmsDbFS": -23.300395527479438,
+      "clippedSamples": 0
+    },
+    {
+      "file": "alert.wav",
+      "seconds": 1.1,
+      "sampleRate": 48000,
+      "channels": 2,
+      "bitDepth": 16,
+      "peakDbFS": -7.958800173440752,
+      "rmsDbFS": -23.096542740519194,
+      "clippedSamples": 0
+    },
+    {
+      "file": "lock.wav",
+      "seconds": 1.5,
+      "sampleRate": 48000,
+      "channels": 2,
+      "bitDepth": 16,
+      "peakDbFS": -6.935749724493126,
+      "rmsDbFS": -25.848496083376524,
+      "clippedSamples": 0
+    },
+    {
+      "file": "print.wav",
+      "seconds": 2.8,
+      "sampleRate": 48000,
+      "channels": 2,
+      "bitDepth": 16,
+      "peakDbFS": -7.958800173440752,
+      "rmsDbFS": -21.25398786070353,
+      "clippedSamples": 0
+    },
+    {
+      "file": "sync.wav",
+      "seconds": 2.3,
+      "sampleRate": 48000,
+      "channels": 2,
+      "bitDepth": 16,
+      "peakDbFS": -6.935749724493125,
+      "rmsDbFS": -22.312714108100504,
+      "clippedSamples": 0
+    }
+  ]
+}

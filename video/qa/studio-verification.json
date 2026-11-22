@@ -1,0 +1,28 @@
+{
+  "checkedAt": "2026-11-20T17:37:39.207Z",
+  "passed": false,
+  "consoleErrors": [],
+  "consoleWarnings": [],
+  "pageErrors": [],
+  "failedRequests": [],
+  "seekAborts": [
+    {
+      "url": "http://localhost:3107/static-c7d86afe5310/audio/ocean-bed-98bpm.wav",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "url": "http://localhost:3107/static-c7d86afe5310/audio/intro.wav",
+      "error": "net::ERR_ABORTED"
+    }
+  ],
+  "httpErrors": [],
+  "samples": [
+    {
+      "seconds": 2,
+      "frame": 120,
+      "visibleImages": 1,
+      "textBounds": []
+    }
+  ],
+  "error": "page.waitForFunction: Timeout 15000ms exceeded."
+}

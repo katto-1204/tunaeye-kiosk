@@ -1,0 +1,61 @@
+{
+  "checkedAt": "2026-11-20T17:26:28.304Z",
+  "passed": false,
+  "consoleErrors": [
+    "Failed to load resource: the server responded with a status of 404 (Not Found)"
+  ],
+  "consoleWarnings": [
+    "EncodingError: The source image cannot be decoded.",
+    "Could not load image with source http://localhost:3107/static-c7d86afe5310/kiosk-screens/undefined, retrying again in 1000ms"
+  ],
+  "pageErrors": [],
+  "failedRequests": [],
+  "seekAborts": [
+    {
+      "url": "http://localhost:3107/static-c7d86afe5310/audio/ocean-bed-98bpm.wav",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "url": "http://localhost:3107/static-c7d86afe5310/audio/ocean-bed-98bpm.wav",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "url": "http://localhost:3107/static-c7d86afe5310/audio/intro.wav",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "url": "http://localhost:3107/static-c7d86afe5310/audio/ocean-bed-98bpm.wav",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "url": "http://localhost:3107/static-c7d86afe5310/audio/intro.wav",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "url": "http://localhost:3107/static-c7d86afe5310/audio/ocean-bed-98bpm.wav",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "url": "http://localhost:3107/static-c7d86afe5310/audio/ocean-bed-98bpm.wav",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "url": "http://localhost:3107/static-c7d86afe5310/audio/ocean-bed-98bpm.wav",
+      "error": "net::ERR_ABORTED"
+    }
+  ],
+  "httpErrors": [
+    {
+      "url": "http://localhost:3107/static-c7d86afe5310/kiosk-screens/undefined",
+      "status": 404
+    }
+  ],
+  "samples": [
+    {
+      "seconds": 2,
+      "frame": 120,
+      "visibleImages": 1
+    }
+  ],
+  "error": "consoleErrors: [\"Failed to load resource: the server responded with a status of 404 (Not Found)\"]\n\n1 !== 0\n"
+}

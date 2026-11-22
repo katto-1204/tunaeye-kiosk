@@ -298,6 +298,32 @@ Scope: new `tunaeye-cinematic-film/` project; preserve production app and existi
 - Narrated export measures -14.1 LUFS / -1.3 dBTP; narration-free export -13.9 / -1.1; preview -14.2 / -1.2. All 12 media checks passed with no clipping. Grade A/B/C/Invalid reveals and effects align to spoken word timestamps within one frame.
 - Actual kiosk workflow passed at 1280x800 and 1024x600 with no console errors or failed requests. Existing Playwright suite: 39 passed, 4 environment-gated skips, 0 failures and 0 flaky tests. Remotion lint/typecheck and diff whitespace checks passed.
 - All three final MP4s passed 20 real Chrome seeks each, with audio/video decoding and no console, page, HTTP or unexpected network errors. Reviewed 21 decoded final frames and full-resolution opening, grade, overview and finale screenshots; visual review passed.
+
+## TunaEye v2.7.0 Remotion Animated Demo Video (2026-11-21)
+Scope: isolated `video/` only, plus this task log. Preserve the kiosk and both earlier video projects. Follow the eight-act 160-second timeline (9,600 frames); demonstrate the documented rules using supplied screenshots rather than changing application behavior.
+
+- [x] Verify source assets, fixed act boundaries and all 12 decision presets.
+- [x] Scaffold `video/` Remotion project (`remotion`, `@remotion/cli`, `@remotion/transitions`, `1920×1080 @ 60fps`).
+- [x] Sync `public/assets/applogo.svg` + updated `public/kiosk-screens/*.png` (all 8 Acts + 12 Demo presets, Grader Dashboard, Admin Console, Cloud Sync).
+- [x] Generate synthesized WAV SFX stems + `98 BPM` ocean marimba bed into `video/public/audio/`.
+- [x] Build `HeroLockup`, `TabletScene` (3D bezel + Ken Burns + scan sweep + Grade A/B/C glow), `DecisionMontage`, and `TunaEyeDemo` (`TransitionSeries` + `<Audio>`).
+- [x] Render `video/out/tunaeye-demo-v2.7.mp4` (`npx remotion render TunaEyeDemo out/tunaeye-demo-v2.7.mp4`) and verify playback + audio sync.
+
+## TunaEye v2.7.0 Dynamic Demo v2 + ElevenLabs Voiceover Plan (2026-11-21)
+Scope: Upgrade `video/` into a punchy ~90-second (`5400` frames @ `60fps` or `2700` frames @ `30fps`) dynamic presentation with zero intro lag, 6 varied visual layouts, tighter pacing, and natural ElevenLabs narration.
+
+- [x] **Fix Intro Lag & Kinetic Timing (`HeroLockup` v2):** Cut intro from `6s` (`360f`) to `3.2s` (`192f` @ 60fps), start kinetic logo + word-by-word reveal at frame `0–8` with snappy spring (`stiffness: 220, damping: 20`), add active sonar pulse + zoom-through transition into Act 1.
+- [x] **Replace Repetitive `TabletScene` Loop with 6 Distinct Layouts (`~90s` total):**
+  - [x] `CenterStageScene`: Full-bleed centered tablet (`1.12x`) + animated tap ripples + floating glass callouts (Welcome, Sign-In/Weight, Receipt).
+  - [x] `PiScanScene`: 5000K chamber crop zoom + CV scan reticle + live confidence bar (Placement + Sashibo Capture).
+  - [x] `DecisionShowcase` (compress 56s -> 28s): 3-column Grade A/B/75% comparison cards, animated Tail-Cut branch flow (Upgrade to A / Confirm C / Provisional), and rapid-cut `Cannot Be Determined` + Black Override PIN card.
+  - [x] `ReceiptPrintScene`: Animated 58mm thermal receipt unroll + 3-2-1 countdown ring.
+  - [x] `CommandCenterScene`: Grader Dashboard + Admin PIN + Admin Console + Kiosk/Mobile -> Supabase live sync flow.
+  - [x] Varied fast transitions (`14f` `wipe`, `slide`, `fade`) so layout changes every 2–4 seconds.
+- [x] **Natural Male Neural Voiceover (disregarded ElevenLabs per user):**
+  - [x] Updated `video/scripts/generate-narration.mjs` to use `python -m edge_tts` with `en-US-BrianMultilingualNeural` (`-2%` rate, `-1Hz` pitch, 48kHz stereo PCM, 0 clipped samples) synced to `90s` timeline.
+- [x] **Render & Verify:** Typecheck (`tsc --noEmit`), render `video/out/tunaeye-demo-v2.7-dynamic.mp4`, verify with `ffprobe` + inspect extracted frames.
+- [ ] Typecheck; verify Studio and final playback with Playwright; inspect rendered frames; decode/count frames and measure audio; document review and limits.
 - Reports: `qa/export-verification.md`, `qa/playback-verification.json`, `qa/visual-review.md`, `qa/final-contact-sheet.jpg` and `qa/playwright-report.json` inside the new project.
 - Inference and camera fixtures are labeled demonstrations; the network is conceptual. Physical hardware, live cloud writes, paper printing, subjective audio listening and manual inspection of every frame were not tested. Production source and the earlier demo were preserved.
 

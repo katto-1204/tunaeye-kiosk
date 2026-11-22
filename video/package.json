@@ -1,0 +1,26 @@
+{
+  "name": "tunaeye-demo-v2-7",
+  "version": "2.7.0",
+  "private": true,
+  "scripts": {
+    "dev": "remotion studio --port=3107",
+    "typecheck": "tsc --noEmit",
+    "render": "remotion render TunaEyeDemo out/tunaeye-demo-v2.7.mp4",
+    "audio": "node scripts/generate-audio.mjs",
+    "narrate": "node scripts/generate-narration.mjs --local",
+    "verify:export": "node scripts/verify-export.mjs",
+    "verify:browser": "node scripts/verify-browser.mjs"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.545",
+    "@remotion/transitions": "4.0.545",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "remotion": "4.0.545"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.7",
+    "@types/react-dom": "19.2.3",
+    "typescript": "5.9.3"
+  }
+}

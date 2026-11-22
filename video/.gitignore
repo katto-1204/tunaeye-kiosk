@@ -1,0 +1,7 @@
+node_modules/
+out/
+.remotion/
+qa/frames/
+qa/playwright-artifacts/
+scripts/.audio-cache/
+qa/kiosk-artifacts/

@@ -1,0 +1,258 @@
+[
+  {
+    "file": "assets/applogo.svg",
+    "sha256": "49813f8bce681d4e25bcf2705e31ce77b7c82e16a6bc1946b3327baf8fcbc768"
+  },
+  {
+    "file": "kiosk-screens/00-landing-page.png",
+    "sha256": "9c2058f28db30df44f20a5ff5a9f07b99f894bff6ed93cfa70ad1ce1f9f8ba6e"
+  },
+  {
+    "file": "kiosk-screens/01-welcome.png",
+    "sha256": "1a5a0d4b1cdb1f46fea9f699f1fb21eb28bc2825032d20decd2e39938a675bef"
+  },
+  {
+    "file": "kiosk-screens/01b-welcome-sync-modal.png",
+    "sha256": "12ccace7b03b2aac41b066ab22fa5e118a992a14eb36f9a87cf010414a70191a"
+  },
+  {
+    "file": "kiosk-screens/01c-slow-wifi-sync-modal.png",
+    "sha256": "f67b4f5b65560011e8d364936e091af8875055e9370cefb2ec2bc484294e1e61"
+  },
+  {
+    "file": "kiosk-screens/02-grader-identity.png",
+    "sha256": "5ede331649d15154e4348daf691d8359aec3ac92169558ea4629cbc412539504"
+  },
+  {
+    "file": "kiosk-screens/02b-grader-match-modal.png",
+    "sha256": "79dacf97e1ba27b6e53ef50b40faef850cdccf63dd03e273c55713717194c9ab"
+  },
+  {
+    "file": "kiosk-screens/03-weight-entry.png",
+    "sha256": "07415004a92a68ebb742e5a03265fad5273a44ef7120f082c1259aaf8468b861"
+  },
+  {
+    "file": "kiosk-screens/04-placement-guide.png",
+    "sha256": "b7c13515560392a1429cc4c542179c42f269d53a6fba89bab09dc85464419b3e"
+  },
+  {
+    "file": "kiosk-screens/04b-placement-guide-step2.png",
+    "sha256": "34b5231c843754dd4a401da4e3c9a5f32bee44b0a33913c49ce889bb61d8d1a4"
+  },
+  {
+    "file": "kiosk-screens/04c-placement-guide-step3.png",
+    "sha256": "35aa9dd87e3bd2d32a14605f87a718f0f5e02c226771da5ced8dbe1fa1050768"
+  },
+  {
+    "file": "kiosk-screens/05-core-capture.png",
+    "sha256": "680603e021a660539745895f59d73474207193d00af7d9c9cd3f879adeb09293"
+  },
+  {
+    "file": "kiosk-screens/05b-invalid-sample-modal.png",
+    "sha256": "bf8a9378918ca54b580bf8d9c956a458b8570a18b5406c524e23152838814e93"
+  },
+  {
+    "file": "kiosk-screens/06-core-result.png",
+    "sha256": "671219ce3f6484a760a9cd99438fda8100ae35e7b9ff2d93675e081dc2b686a8"
+  },
+  {
+    "file": "kiosk-screens/07-tail-needed.png",
+    "sha256": "c12bcc720a563019ebadcb9455f652767595686083de2fb6febe0a9d3c3a5206"
+  },
+  {
+    "file": "kiosk-screens/08-tail-capture.png",
+    "sha256": "b8a1cf2d533e1da81ca54dfb557718169d4b909090a1e85e82680d03ff86951f"
+  },
+  {
+    "file": "kiosk-screens/09-final-grade.png",
+    "sha256": "1064520fc48d8da03a8c2737c794fb54c7b753122243b85eaf5dfb26260d13f5"
+  },
+  {
+    "file": "kiosk-screens/10-receipt.png",
+    "sha256": "847ffd9cac65cd763f99caa0881d1178de6aeede4eb344df05cd94cbcb4de6d9"
+  },
+  {
+    "file": "kiosk-screens/11-completion.png",
+    "sha256": "66f9d20a93f1cf1d026f2e40a035fec8f1d27004bd47ce9cbe2f86ab869159b6"
+  },
+  {
+    "file": "kiosk-screens/12-admin-pin.png",
+    "sha256": "19ba7cc6454be1eb751f0099f5a91445afda696c9cc2d35a8e0fa2a487a50686"
+  },
+  {
+    "file": "kiosk-screens/13-admin-overview.png",
+    "sha256": "8311f5750ad4f9105d0f3c79ff5e4da24e7210da181910062e16d85a02c6c596"
+  },
+  {
+    "file": "kiosk-screens/14-admin-records.png",
+    "sha256": "fb54997627fd9f0b42a2501e29a2857c77dde17921a8ff9c32de18aa3b27a6ee"
+  },
+  {
+    "file": "kiosk-screens/14b-admin-record-detail.png",
+    "sha256": "4380e34139ea6e5752bcaa5ef41b4d2ecd09fa9978d3ffe5aeddf53501388544"
+  },
+  {
+    "file": "kiosk-screens/15-admin-devices.png",
+    "sha256": "a0bff28fa0f3c8276b43a64a0e517a26cc712cdf9805ce7f5fdeff8844a1fbc0"
+  },
+  {
+    "file": "kiosk-screens/15b-admin-expert-graders.png",
+    "sha256": "62206b59e6c0528827e81a07e589bae59913ace7e86ffdc758e2066c7a8f649a"
+  },
+  {
+    "file": "kiosk-screens/16-admin-settings.png",
+    "sha256": "783234144b59e35fab84de366ef416e2eabcb91a3e6aee6db82f3337ba1c4b1a"
+  },
+  {
+    "file": "kiosk-screens/17-admin-audit-log.png",
+    "sha256": "0488929d430c35f28a3f63c8a13288094d72fa499a8abc662bd6015632865951"
+  },
+  {
+    "file": "kiosk-screens/18-record-detail.png",
+    "sha256": "a9975fbfb93ad10b71c39746df5a947bd8842c548b8053ad079978e02227488c"
+  },
+  {
+    "file": "kiosk-screens/19-grader-dashboard.png",
+    "sha256": "92d9703f2af4d0a093e4024a1117347405656e6a1e49f98f5820ca101cbd96c0"
+  },
+  {
+    "file": "kiosk-screens/19b-grader-dashboard-empty.png",
+    "sha256": "c593e768d57afc828602752c03ee44043f80a7dcd7047d21e03f4cfeae1d5ff9"
+  },
+  {
+    "file": "kiosk-screens/20-core-camera-live.png",
+    "sha256": "54edd08358141bc7327aaa526765d73700c916c23df38a27338037364612d543"
+  },
+  {
+    "file": "kiosk-screens/21-tail-needed-correct.png",
+    "sha256": "b3304d3156a3203677d47380d63109d1e4ceab5f9f3794735d2fe62b0df582cd"
+  },
+  {
+    "file": "kiosk-screens/22-tail-camera.png",
+    "sha256": "b8a1cf2d533e1da81ca54dfb557718169d4b909090a1e85e82680d03ff86951f"
+  },
+  {
+    "file": "kiosk-screens/23-final-combined.png",
+    "sha256": "1064520fc48d8da03a8c2737c794fb54c7b753122243b85eaf5dfb26260d13f5"
+  },
+  {
+    "file": "kiosk-screens/24-terms-dialog.png",
+    "sha256": "faaf2e2345213bea55de6ce84ebbf486c423b84ba7b4119bf651c82ed5b68561"
+  },
+  {
+    "file": "kiosk-screens/25-privacy-dialog.png",
+    "sha256": "175459452b81da8d96254155906edaab13bdf365820c2da6d8b210bc4ca142e3"
+  },
+  {
+    "file": "kiosk-screens/26-leave-session-dialog.png",
+    "sha256": "61c75bfa3348e11ef647b7fb087e85c14eec9b24b46a778b359899d61bbd9e6f"
+  },
+  {
+    "file": "kiosk-screens/27-override-dialog.png",
+    "sha256": "887c663ff172e0effb31b7f3e8cded1aaa296205dfb46175a2c651582e1a84f4"
+  },
+  {
+    "file": "kiosk-screens/28-receipt-screen.png",
+    "sha256": "847ffd9cac65cd763f99caa0881d1178de6aeede4eb344df05cd94cbcb4de6d9"
+  },
+  {
+    "file": "kiosk-screens/29-skip-receipt-dialog.png",
+    "sha256": "4a4a403feda7dc168aba3deb103156b1357357e405055cb6860c148ef25a48cd"
+  },
+  {
+    "file": "kiosk-screens/30-admin-overview.png",
+    "sha256": "66b51411921f0400b41388f8d3b3c83eb6989d457a4eca726976ef48a359d2b9"
+  },
+  {
+    "file": "kiosk-screens/35-record-detail-full.png",
+    "sha256": "d29d42d31d9696c7f0d788ac4d160e471b02ebcdc986d850436a328dd09d52bb"
+  },
+  {
+    "file": "kiosk-screens/admin-audit-full.png",
+    "sha256": "e993b7adaa3286ba4b3f3ad6d837dcb6553c1290ba8ddae86f7139fcc5f4d296"
+  },
+  {
+    "file": "kiosk-screens/admin-devices-full.png",
+    "sha256": "89f1d539fb6890c47288d6d7c60608b7675aced2c522be510177a9febadb8c69"
+  },
+  {
+    "file": "kiosk-screens/admin-records-full.png",
+    "sha256": "42feee5b7b9ac9e76d958211f34dc57b35e8316c458ad50b74f4aaebc9bf9c3d"
+  },
+  {
+    "file": "kiosk-screens/admin-settings-full.png",
+    "sha256": "2138b97d6e110e03c3852c2045a8a9b49f321d76042d656d73475ef2ade38f88"
+  },
+  {
+    "file": "kiosk-screens/demo-01-grade-a.png",
+    "sha256": "eb241765fe19df9b88caa6f6019637e63fbd71aa9560c0a7929103fa30c8344c"
+  },
+  {
+    "file": "kiosk-screens/demo-02-grade-b.png",
+    "sha256": "6edbda2825ad6e6192f5234c8ef760a7b7b16ef76d772f1192956925e774cc26"
+  },
+  {
+    "file": "kiosk-screens/demo-03-grade-c-tailneed.png",
+    "sha256": "90233e895fff688356d072d3fb81fa000d3bd2aa1e2b0f65cd867c344f8b0325"
+  },
+  {
+    "file": "kiosk-screens/demo-03b-grade-c-final.png",
+    "sha256": "46db096c1c7f4251a885eec988da8597aec4e0f48bc1330a949a98e0de94542f"
+  },
+  {
+    "file": "kiosk-screens/demo-04-needs-tail.png",
+    "sha256": "309ff74305f41adad0d45a3d9379c1c7f8c5c229e52b8633b0da829d9ec1c971"
+  },
+  {
+    "file": "kiosk-screens/demo-05-tail-upgrades-a.png",
+    "sha256": "d311ec95834a373958d092f3c7b8b7f77d9d8cf01d0a37c12f8bfd9a76895d1b"
+  },
+  {
+    "file": "kiosk-screens/demo-06-tail-confirms-c.png",
+    "sha256": "75478acdb3af7df8062367d9a13249cbd5be7dfe6d6c0ec2b4ab1296c65a6dc3"
+  },
+  {
+    "file": "kiosk-screens/demo-07-no-tail-provisional.png",
+    "sha256": "4ca9f0c2841442a31dc19121e60c104a300ba93acae972a29e055a1983263d8b"
+  },
+  {
+    "file": "kiosk-screens/demo-08-borderline-75.png",
+    "sha256": "ff8708095aa325f3defb4d44d4d6f35e43877032ebde94339591cf9de4ec9e82"
+  },
+  {
+    "file": "kiosk-screens/demo-09-needs-expert.png",
+    "sha256": "5e38d97285b159d3ba0ee9b3ca6db4ffb25d9b218b24a84e56f5345bcfef662c"
+  },
+  {
+    "file": "kiosk-screens/demo-10-tail-uncertain-expert.png",
+    "sha256": "1a254d74c7492be803bd0105b561628e0a870924b43c200365410b3f616f5d08"
+  },
+  {
+    "file": "kiosk-screens/demo-11-invalid-core.png",
+    "sha256": "78e5539617bd8a3f7e60bfafdcc6a2fcec9ff48e30e792074116ef7d2e4e723c"
+  },
+  {
+    "file": "kiosk-screens/demo-12-invalid-tail.png",
+    "sha256": "96054f4d6cc4ace62cd848821525ad6148f559e8d5c6c3f8fd7e78b077159f90"
+  },
+  {
+    "file": "fonts/OpenRunde-Regular.woff2",
+    "sha256": "da42a03569a63e4ae09ea2943bd530fce8bbf72ea4609618232c86f54c705e76"
+  },
+  {
+    "file": "fonts/OpenRunde-Bold.woff2",
+    "sha256": "9a64eabe53890050c4606ca2def75c0f7b78e5bfb1e45b1ee59951f30ceae79a"
+  },
+  {
+    "file": "fonts/inter-400.ttf",
+    "sha256": "1b08e7fc267a5c7e1d614100f604b83e7e8a0be241f0f288faa2b3ac93a683ba"
+  },
+  {
+    "file": "fonts/inter-600.ttf",
+    "sha256": "e7a1aaf7eda9f2fad4131725fa556265ec75ca7b2d756260173a040363e8d4f7"
+  },
+  {
+    "file": "fonts/instrument-serif-italic.ttf",
+    "sha256": "fecf4861d5202405b8bd45c683858b6870642a026784fe0dbf88ff55dedee8a0"
+  }
+]
