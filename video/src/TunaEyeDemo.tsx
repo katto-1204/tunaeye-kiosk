@@ -163,4 +163,9 @@ export const TunaEyeDemo = () => {
           durationInFrames={(ACTS[i + 1] - sec) * 30}
           layout="none"
         >
-          <Audio src={staticFile(`audio/voice-${String(i + 1).padStart(2, '0')}.wav`)} v
+          <Audio src={staticFile(`audio/voice-${String(i + 1).padStart(2, '0')}.wav`)} volume={0.92} />
+        </Sequence>
+      ))}
+    </AbsoluteFill>
+  );
+};

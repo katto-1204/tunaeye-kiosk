@@ -185,8 +185,8 @@ try {
           sample: 'Sashibo core',
           grade,
           timestamp: now - offMin * 60000,
-          result: {originalConfidence: conf, originalGrade: grade, modelSource: 'pi'},
-          transaction: {syncState: synced ? 'synced' : 'local', amount: wt * rate, unitRatePerKg: rate},
+          result: { originalConfidence: conf, originalGrade: grade, modelSource: 'pi' },
+          transaction: { syncState: synced ? 'synced' : 'local', amount: wt * rate, unitRatePerKg: rate },
           source: 'kiosk',
         };
       };
@@ -207,12 +207,12 @@ try {
     await page.waitForTimeout(500);
     marks.dashStart = t();
     await page.waitForTimeout(2200);
-    const allBtn = kiosk.getByRole('button', {name: /All device records/i}).first();
+    const allBtn = kiosk.getByRole('button', { name: /All device records/i }).first();
     if (await allBtn.isVisible().catch(() => false)) {
       await allBtn.click();
       await page.waitForTimeout(2000);
     }
-    const mineBtn = kiosk.getByRole('button', {name: /My records/i}).first();
+    const mineBtn = kiosk.getByRole('button', { name: /My records/i }).first();
     if (await mineBtn.isVisible().catch(() => false)) {
       await mineBtn.click();
       await page.waitForTimeout(1600);
@@ -341,9 +341,9 @@ try {
 
     marks.overrideStart = t();
     await page.waitForTimeout(1000);
-    await kiosk.locator('#go, #orb').first().click({force: true});
+    await kiosk.locator('#go, #orb').first().click({ force: true });
     const dialog = kiosk.locator('[role="dialog"]').first();
-    await dialog.waitFor({state: 'visible', timeout: 10000});
+    await dialog.waitFor({ state: 'visible', timeout: 10000 });
     await page.waitForTimeout(500);
     await dialog.getByRole('button', { name: 'Visual inspection' }).click();
     await page.waitForTimeout(350);

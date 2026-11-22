@@ -5,26 +5,26 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 
-const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..'),out=path.join(root,'public/audio');
-await mkdir(out,{recursive:true});
-const cache=path.join(root,'scripts/.audio-cache-v5');await mkdir(cache,{recursive:true});
-const starts=[0,10,20,28,48,54,63,78,83];
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'), out = path.join(root, 'public/audio');
+await mkdir(out, { recursive: true });
+const cache = path.join(root, 'scripts/.audio-cache-v5'); await mkdir(cache, { recursive: true });
+const starts = [0, 10, 20, 28, 48, 54, 63, 78, 83];
 // Exact frame-synced 83s Problem -> Solution + Live Performance timeline.
-const fragments=[
-  [1,0.15,'Tuna grading depends on rare expert eyes, uneven light, and manual tallies.'],
-  [1,5.15,'Enter Tuna Eye. Offline-first vision on Raspberry Pi five.'],
-  [2,10.15,'One tap starts grading.'],
-  [2,13.9,'Owen Pilongo signs in, checks readiness, and enters weight from twenty to two hundred kilograms.'],
-  [3,20.15,'Place the Sashibo core in the controlled chamber, and capture live from the Pi camera.'],
-  [4,28.15,'At seventy five percent or higher, Grade A or B goes straight to receipt.'],
-  [4,34.15,'Grade C or uncertain cores trigger a live Tail-Cut check.'],
-  [4,39.15,'Non-tuna samples are rejected cleanly.'],
-  [4,43.15,'Severe disagreement locks behind a Supervisor PIN.'],
-  [5,48.15,'Bluetooth auto-prints a fifty eight millimeter receipt, then counts down three seconds.'],
-  [6,54.15,'In the Grader Dashboard, review every session, inspect photos, and reprint anytime.'],
-  [7,63.15,'Supervisors enter PIN one two three four for live station data, records, and devices.'],
-  [7,72.15,'Once Wi-Fi returns, local records sync to the Supabase cloud ledger.'],
-  [8,78.15,'Tuna Eye. Sea beyond the cut.'],
+const fragments = [
+  [1, 0.15, 'Tuna grading depends on rare expert eyes, uneven light, and manual tallies.'],
+  [1, 5.15, 'Enter Tuna Eye. Offline-first vision on Raspberry Pi five.'],
+  [2, 10.15, 'One tap starts grading.'],
+  [2, 13.9, 'Owen Pilongo signs in, checks readiness, and enters weight from twenty to two hundred kilograms.'],
+  [3, 20.15, 'Place the Sashibo core in the controlled chamber, and capture live from the Pi camera.'],
+  [4, 28.15, 'At seventy five percent or higher, Grade A or B goes straight to receipt.'],
+  [4, 34.15, 'Grade C or uncertain cores trigger a live Tail-Cut check.'],
+  [4, 39.15, 'Non-tuna samples are rejected cleanly.'],
+  [4, 43.15, 'Severe disagreement locks behind a Supervisor PIN.'],
+  [5, 48.15, 'Bluetooth auto-prints a fifty eight millimeter receipt, then counts down three seconds.'],
+  [6, 54.15, 'In the Grader Dashboard, review every session, inspect photos, and reprint anytime.'],
+  [7, 63.15, 'Supervisors enter PIN one two three four for live station data, records, and devices.'],
+  [7, 72.15, 'Once Wi-Fi returns, local records sync to the Supabase cloud ledger.'],
+  [8, 78.15, 'Tuna Eye. Sea beyond the cut.'],
 ];
 const run = (cmd, args) => { const r = spawnSync(cmd, args, { encoding: 'utf8', maxBuffer: 5e6 }); assert.equal(r.status, 0, r.stderr || r.error?.message); return r.stdout; };
 const local = process.argv.includes('--local');
