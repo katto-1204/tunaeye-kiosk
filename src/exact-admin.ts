@@ -8,6 +8,7 @@ import type { Grade } from './kioskState'
 import { createId } from './id'
 import { isDemoMode } from './demoMode'
 import { mountTechnicalPanel } from './exact-technical'
+import { ensureSeededExpertGraders, listExpertGradersSync, registerExpertGrader, removeExpertGrader } from './expertGraders'
 
 type Context = { refresh: () => void; notice: (text: string, error?: boolean) => void; setDemo: (enabled: boolean) => void }
 type TimeRange = 'all' | 'month' | 'week' | 'today' | 'yesterday' | 'hour' | 'older'
@@ -63,6 +64,12 @@ export function enhanceAdmin(w: Window, context: Context) {
   })
   const graders = [...storedGraders, ...extraGraders]
   if (extraGraders.length) localStorage.setItem('tunaeye-graders', JSON.stringify(graders))
+  if (localStorage.getItem('tunaeye-expert-graders-v1') === null) {
+    void ensureSeededExpertGraders().then(() => { if (w.document.body.contains(body)) enhanceAdmin(w, context) })
+  }
+  const expertGraders = listExpertGradersSync()
+  const expertNameSet = new Set(expertGraders.map(e => e.name.trim().toLocaleLowerCase()))
+  const scanOnlyOperators = graders.filter(name => !expertNameSet.has(name.trim().toLocaleLowerCase()))
   const draw = () => enhanceAdmin(w, context)
   const saveGraders = (next: string[]) => { localStorage.setItem('tunaeye-graders', JSON.stringify(next)); draw() }
   const button = (id: string, label: string, primary = false) => `<button id="${id}" class="${primary ? 'primary' : ''}" type="button">${label}</button>`
@@ -91,7 +98,7 @@ export function enhanceAdmin(w: Window, context: Context) {
   switch (state.tab) {
     case 'overview': {
       const weight = rangedRecords.reduce((sum, row) => sum + (parseFloat(row.weight) || 0), 0), pending = rangedRecords.filter(row => row.transaction?.syncState !== 'synced').length
-      const metrics = [['Sessions', new Set(rangedRecords.map(row => row.sessionId)).size], ['Fish weight', `${weight.toFixed(1)} kg`], ['Pending sync', pending], ['Expert graders', graders.length]]
+      const metrics = [['Sessions', new Set(rangedRecords.map(row => row.sessionId)).size], ['Fish weight', `${weight.toFixed(1)} kg`], ['Pending sync', pending], ['Expert graders', expertGraders.length]]
       const days = Array.from({ length: 7 }, (_, i) => { const start = new Date(); start.setHours(0, 0, 0, 0); start.setDate(start.getDate() - 6 + i); return { label: start.toLocaleDateString(undefined, { weekday: 'short' }), count: rangedRecords.filter(row => row.timestamp >= +start && row.timestamp < +start + 86400000).length } })
       const peak = Math.max(1, ...days.map(day => day.count))
       const gradeCount = (grade: string) => rangedRecords.filter(row => row.grade === grade).length
@@ -101,7 +108,15 @@ export function enhanceAdmin(w: Window, context: Context) {
     }
     case 'records': html = section('Every grade. Its evidence.', `${rangeBar}<div class="ea-row" style="margin-top:12px"><input id="ea-search" type="search" aria-label="Search records" placeholder="Search record, grader, sample or grade" value="${esc(v.query)}">${button('ea-cloud', 'Load cloud records')}${button('ea-export', 'Export CSV')}</div><div id="ea-records"></div>`, 'Original predictions, expert decisions and saved price snapshots stay together.'); break
     case 'prices': html = section('A fair price for every grade.', `<div class="ea-form" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr))">${(['A', 'B', 'C'] as Grade[]).map(grade => `<label>Grade ${grade} · PHP / kg<input id="ea-price-${grade}" type="number" min="0" step="0.01" value="${loadPriceSchedule()[grade]}"></label>`).join('')}</div><div class="ea-row" style="margin-top:20px">${button('ea-prices-save', 'Save price schedule', true)}</div>`, 'Save locally first, then verify the schedule in Supabase. Historical records keep their saved rate.'); break
-    case 'graders': html = section('The experts behind every grade.', `<div class="ea-row"><input id="ea-grader-name" aria-label="New grader name" placeholder="Enter full name" maxlength="160">${button('ea-grader-add', 'Add grader', true)}</div>${graders.length ? graders.map((name, index) => { const count = records.filter(r => r.grader.trim().toLocaleLowerCase() === name.trim().toLocaleLowerCase()).length; const isCurrent = activeGrader && activeGrader.toLocaleLowerCase() === name.trim().toLocaleLowerCase(); return `<div class="ea-row between" style="border-top:1px solid #e3eaf8;margin-top:15px;padding-top:15px"><div><b>${esc(name)}</b>${isCurrent ? ' <span class="ea-badge synced">Currently grading</span>' : ''}<small style="display:block;color:#64738d">${count} sample${count === 1 ? '' : 's'} recorded</small></div><div class="ea-row">${count > 0 ? `<button data-grader-records="${esc(name)}">View records</button>` : ''}<button data-remove-grader="${index}" aria-label="Remove ${esc(name)}">Remove</button></div></div>` }).join('') : '<div class="ea-empty">No graders recorded yet.</div>'}`); break
+    case 'graders': html = section(
+      'Authorized expert graders',
+      `<div class="ea-row" style="gap:10px;align-items:stretch"><input id="ea-grader-name" aria-label="Expert grader full name" placeholder="Expert grader full name" maxlength="160" style="flex:1;min-width:200px"><input id="ea-grader-pin" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" aria-label="4-digit override PIN" placeholder="4-digit PIN" style="width:148px">${button('ea-grader-add', 'Register expert grader', true)}</div>${expertGraders.length ? expertGraders.map(expert => { const count = records.filter(r => r.grader.trim().toLocaleLowerCase() === expert.name.trim().toLocaleLowerCase()).length; const overrides = records.filter(r => r.result?.overrideActor?.trim().toLocaleLowerCase() === expert.name.trim().toLocaleLowerCase()).length; const isCurrent = activeGrader && activeGrader.toLocaleLowerCase() === expert.name.trim().toLocaleLowerCase(); return `<div class="ea-row between" style="border-top:1px solid #e3eaf8;margin-top:15px;padding-top:15px"><div><b>${esc(expert.name)}</b> <span class="ea-badge synced">Override PIN set</span>${isCurrent ? ' <span class="ea-badge">Currently at station</span>' : ''}<small style="display:block;color:#64738d;margin-top:2px">${count} scan${count === 1 ? '' : 's'} · ${overrides} override${overrides === 1 ? '' : 's'} authorized</small></div><div class="ea-row">${count > 0 ? `<button data-grader-records="${esc(expert.name)}">View records</button>` : ''}<button data-remove-expert="${esc(expert.id)}" aria-label="Remove ${esc(expert.name)}">Remove</button></div></div>` }).join('') : '<div class="ea-empty">No expert graders registered yet. Add an expert grader with a 4-digit PIN to authorize manual overrides.</div>'}`,
+      'Only expert graders registered here can be selected in the Manual Override modal and authorize grades with their personal 4-digit PIN.'
+    ) + section(
+      'Station operators (scan-only)',
+      scanOnlyOperators.length ? scanOnlyOperators.map(name => { const count = records.filter(r => r.grader.trim().toLocaleLowerCase() === name.trim().toLocaleLowerCase()).length; const isCurrent = activeGrader && activeGrader.toLocaleLowerCase() === name.trim().toLocaleLowerCase(); return `<div class="ea-row between" style="border-top:1px solid #e3eaf8;margin-top:14px;padding-top:14px"><div><b>${esc(name)}</b> <span class="ea-badge">Operator · Scan only</span>${isCurrent ? ' <span class="ea-badge synced">Currently at station</span>' : ''}<small style="display:block;color:#64738d;margin-top:2px">${count} sample${count === 1 ? '' : 's'} scanned</small></div><div class="ea-row">${count > 0 ? `<button data-grader-records="${esc(name)}">View records</button>` : ''}<button data-remove-operator="${esc(name)}" aria-label="Remove ${esc(name)}">Remove</button></div></div>` }).join('') : '<div class="ea-empty">No scan-only operators recorded yet. Any worker can operate the station, while only registered experts above can override.</div>',
+      'Workers who signed in to run normal scans. They must call a registered Expert Grader above to authorize any override.'
+    ); break
     case 'devices': {
       const pi = getPiSettings()
       const piModeLabel = pi.mode === 'unconfigured' ? 'Needs HTTPS gateway' : pi.mode === 'hosted-gateway' ? 'HTTPS gateway' : pi.mode === 'pi-local' ? 'Pi local' : 'Local HTTP'
@@ -142,7 +157,7 @@ export function enhanceAdmin(w: Window, context: Context) {
     const weightValue = record.transaction?.amount != null ? `${record.weight} · ${peso(record.transaction.amount)}` : record.weight
     const savedRate = record.transaction?.unitRatePerKg != null ? `${peso(record.transaction.unitRatePerKg)}/kg` : '—'
     const originalPred = result?.originalGrade ? `Grade ${result.originalGrade}${result.originalConfidence != null ? ` · ${result.originalConfidence}%` : ''}` : '—'
-    const overrideText = result?.overrideGrade ? `Grade ${result.overrideGrade}${result.overrideReason ? ` · ${result.overrideReason}` : ''}` : 'None'
+    const overrideText = result?.overrideGrade ? `Grade ${result.overrideGrade}${result.overrideActor ? ` · Authorized by ${result.overrideActor}` : ''}${result.overrideReason ? ` · ${result.overrideReason}` : ''}` : 'None'
     const idsText = result?.inferenceId || result?.captureId ? `${result?.inferenceId || '—'} / ${result?.captureId || '—'}` : '—'
     overlay.innerHTML = `<section class="sheet ea ea-detail" role="dialog" aria-modal="true" aria-label="Grading record">
       <div class="ea-row between">
@@ -190,9 +205,52 @@ export function enhanceAdmin(w: Window, context: Context) {
   wireReview(); if (state.tab === 'records') { renderRows(); const search = get<HTMLInputElement>('ea-search'); if (search) search.oninput = () => { v.query = search.value; v.page = 1; renderRows() } }
   bind('ea-cloud', async () => { if (!isSupabaseConfigured()) return tell('Cloud is not configured in this build.', true); try { v.cloud = await fetchCloudRecords(); draw(); tell('Cloud records loaded') } catch (e) { tell(e instanceof Error ? e.message : 'Cloud records unavailable', true) } })
   bind('ea-export', () => { const fields = ['id', 'grader', 'sample', 'weight', 'grade', 'status'] as const, quote = (text: unknown) => '"' + String(text ?? '').replaceAll('"', '""') + '"', csv = [fields.join(','), ...records.map(row => fields.map(field => quote(row[field])).join(','))].join('\r\n'), url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' })), a = d.createElement('a'); a.href = url; a.download = 'tunaeye-records.csv'; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); audit('Records exported', `${records.length} records exported to CSV`) })
-  bind('ea-grader-add', () => { const name = value('ea-grader-name'); if (!name) return tell('Enter the grader’s full name.', true); if (graders.some(item => item.toLocaleLowerCase() === name.toLocaleLowerCase())) return tell('That grader is already registered.', true); saveGraders([...graders, name]); void syncGradersToCloud([name]); audit('Grader added', name) })
+  bind('ea-grader-add', async () => {
+    const name = value('ea-grader-name')
+    const pin = value('ea-grader-pin')
+    try {
+      const created = await registerExpertGrader(name, pin)
+      if (!graders.some(item => item.toLocaleLowerCase() === created.name.toLocaleLowerCase())) {
+        localStorage.setItem('tunaeye-graders', JSON.stringify([...graders, created.name]))
+      }
+      void syncGradersToCloud([created.name])
+      audit('Expert grader registered', `${created.name} (personal override PIN set)`)
+      draw()
+      tell(`Registered expert grader ${created.name}`)
+    } catch (err) {
+      tell(err instanceof Error ? err.message : 'Could not register expert grader.', true)
+    }
+  })
   body.querySelectorAll<HTMLButtonElement>('[data-grader-records]').forEach(el => el.onclick = () => { v.query = el.dataset.graderRecords || ''; v.range = 'all'; v.page = 1; d.querySelector<HTMLButtonElement>('.an[data-t="records"]')?.click() })
-  body.querySelectorAll<HTMLButtonElement>('[data-remove-grader]').forEach(el => el.onclick = () => { const index = Number(el.dataset.removeGrader), name = graders[index]; const modal = (w as Window & { eval: (s: string) => any }).eval('modal'); modal({ title: 'Remove grader?', body: `${name} will no longer be offered for new sessions. Historical records remain.`, ok: 'Remove', onOk: () => { saveGraders(graders.filter((_, i) => i !== index)); audit('Grader removed', name) } }) })
+  body.querySelectorAll<HTMLButtonElement>('[data-remove-expert]').forEach(el => el.onclick = () => {
+    const id = el.dataset.removeExpert!
+    const expert = expertGraders.find(item => item.id === id)
+    if (!expert) return
+    const modal = (w as Window & { eval: (s: string) => any }).eval('modal')
+    modal({
+      title: 'Remove expert grader?',
+      body: `${expert.name} will no longer be able to authorize manual overrides. Historical records remain.`,
+      ok: 'Remove',
+      onOk: async () => {
+        await removeExpertGrader(id)
+        audit('Expert grader removed', expert.name)
+        draw()
+      }
+    })
+  })
+  body.querySelectorAll<HTMLButtonElement>('[data-remove-operator]').forEach(el => el.onclick = () => {
+    const name = el.dataset.removeOperator!
+    const modal = (w as Window & { eval: (s: string) => any }).eval('modal')
+    modal({
+      title: 'Remove station operator?',
+      body: `${name} will be removed from the quick-pick list. Historical records remain.`,
+      ok: 'Remove',
+      onOk: () => {
+        saveGraders(graders.filter(item => item.toLocaleLowerCase() !== name.toLocaleLowerCase()))
+        audit('Operator removed', name)
+      }
+    })
+  })
   bind('ea-prices-save', async () => { const prices = Object.fromEntries((['A', 'B', 'C'] as Grade[]).map(grade => [grade, Number(value(`ea-price-${grade}`))])) as Record<Grade, number>; if (Object.values(prices).some(number => !Number.isFinite(number) || number < 0)) return tell('Enter a non-negative price for every grade.', true); localStorage.setItem('tunaeye-prices', JSON.stringify(prices)); Object.assign((w as Window & { eval: (s: string) => any }).eval('RATE'), prices); audit('Prices updated', 'Local price schedule saved'); try { await syncPriceSchedule(prices); tell('Price schedule saved and verified in cloud') } catch (e) { tell(`Prices saved locally. ${e instanceof Error ? e.message : 'Cloud sync unavailable.'}`, true) } })
   bind('ea-settings-save', () => { const endpoint = value('ea-api'), camera = value('ea-camera'); for (const url of [endpoint, camera]) if (url && !/^https?:\/\/[^\s]+$/i.test(url)) return tell('Use a valid HTTP or HTTPS device URL.', true); if (!value('ea-station')) return tell('Enter a station name.', true); localStorage.setItem('tunaeye-station', value('ea-station')); localStorage.setItem('tunaeye-rpi-url', endpoint); localStorage.setItem('tunaeye-camera-url', camera); localStorage.setItem('tunaeye-model-name', value('ea-model')); Object.assign(state.cfg, { name: value('ea-station'), url: endpoint, model: value('ea-model') }); audit('Settings updated', 'Station and Pi connection settings saved'); tell('Station settings saved') })
   bind('ea-pi-test', async () => { const status = get('ea-device-status'); if (status) status.textContent = 'Checking Pi…'; try { const result = await checkPiHealth(); if (status) status.textContent = `Pi reachable · ${result.model ?? result.service ?? 'Status endpoint answered'}`; audit('Pi connection test', 'Status endpoint reachable') } catch (e) { if (status) status.textContent = e instanceof Error ? e.message : 'Pi unavailable'; audit('Pi connection test', 'Pi unavailable') } })

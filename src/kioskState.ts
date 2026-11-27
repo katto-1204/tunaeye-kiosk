@@ -121,7 +121,7 @@ export function decisionFor(state: Session): FinalDecision {
     if (sashibo.originalGrade && (sashibo.originalConfidence ?? 0) >= 60) {
       return { grade: sashibo.originalGrade, confidence: sashibo.originalConfidence, source: 'sashibo', title: `Grade ${sashibo.originalGrade} (Provisional)`, detail: `Sashibo Core is Grade ${sashibo.originalGrade} (${sashibo.originalConfidence ?? '—'}%). Tail-Cut is not available.`, provisional: true, next: 'print' }
     }
-    return { grade: null, confidence: sashibo.originalConfidence, source: 'expert-needed', title: 'Provisional — Manual override required', detail: `Sashibo Core confidence is very low (${sashibo.originalConfidence ?? '—'}%) and Tail-Cut is not available. An authorized grader must confirm the final grade.`, provisional: true, reviewFlagged: true, next: 'override' }
+    return { grade: sashibo.originalGrade ?? 'C', confidence: sashibo.originalConfidence, source: 'expert-needed', title: `Grade ${sashibo.originalGrade ?? 'C'} (Provisional)`, detail: `Sashibo Core confidence is very low (${sashibo.originalConfidence ?? '—'}%) and Tail-Cut is not available. Flagged for manual override by a registered expert grader.`, provisional: true, reviewFlagged: true, next: 'print' }
   }
   if (!tail) {
     if (isAccepted(sashibo) && sashibo.originalGrade && sashibo.originalGrade !== 'C') {
@@ -144,10 +144,11 @@ export function decisionFor(state: Session): FinalDecision {
   const bothBelowThreshold = !isAccepted(sashibo) && !isAccepted(tail)
   const severeDisagreement = Boolean(sashibo.originalGrade && tail.originalGrade && ((sashibo.originalGrade === 'A' && tail.originalGrade === 'C') || (sashibo.originalGrade === 'C' && tail.originalGrade === 'A')))
   if (bothBelowThreshold || avgConfidence < ACCEPT_CONFIDENCE || severeDisagreement) {
+    const predicted = sashibo.originalGrade && tail.originalGrade ? combineGrades(sashibo, tail).grade : (sashibo.originalGrade ?? tail.originalGrade ?? 'B')
     const reason = severeDisagreement
       ? `Severe model disagreement: Sashibo Core (Grade ${sashibo.originalGrade}, ${sashibo.originalConfidence ?? '—'}%) vs Tail-Cut (Grade ${tail.originalGrade}, ${tail.originalConfidence ?? '—'}%).`
       : `Combined confidence (${avgConfidence.toFixed(1)}%) is below the ${ACCEPT_CONFIDENCE}% threshold (Core ${sashibo.originalConfidence ?? '—'}%, Tail ${tail.originalConfidence ?? '—'}%).`
-    return { grade: null, confidence: Math.round(avgConfidence * 10) / 10, source: 'expert-needed', title: 'Manual override required', detail: `${reason} An authorized grader must confirm the final grade.`, reviewFlagged: true, next: 'override' }
+    return { grade: predicted, confidence: Math.round(avgConfidence * 10) / 10, source: 'expert-needed', title: `Grade ${predicted}`, detail: `${reason} Flagged for manual override by a registered expert grader.`, reviewFlagged: true, next: 'print' }
   }
   if (sashibo.originalGrade && tail.originalGrade) {
     if (sashibo.originalGrade === tail.originalGrade) {
@@ -156,7 +157,7 @@ export function decisionFor(state: Session): FinalDecision {
     const combined = combineGrades(sashibo, tail)
     return { grade: combined.grade, confidence: tail.originalConfidence, source: 'combined', title: `Grade ${combined.grade}`, detail: `Combined Sashibo Core (${sashibo.originalGrade}, ${sashibo.originalConfidence ?? '—'}%) and Tail-Cut (${tail.originalGrade}, ${tail.originalConfidence ?? '—'}%) to Grade ${combined.grade}.`, next: 'print' }
   }
-  return { grade: null, confidence: tail.originalConfidence, source: 'expert-needed', title: 'Expert grade required', detail: 'An authorized grader must confirm the final grade.', reviewFlagged: true, next: 'override' }
+  return { grade: sashibo.originalGrade ?? tail.originalGrade ?? 'B', confidence: tail.originalConfidence, source: 'expert-needed', title: `Grade ${sashibo.originalGrade ?? tail.originalGrade ?? 'B'}`, detail: 'Flagged for manual override by a registered expert grader.', reviewFlagged: true, next: 'print' }
 }
 
 export const initialSession: Session = {

@@ -10,6 +10,8 @@ export interface ThermalReceipt {
   core?: { grade: string; confidence: number | null }
   tail?: { grade: string; confidence: number | null }
   provisional?: boolean
+  reviewFlagged?: boolean
+  overrideActor?: string
   tailAvailable?: boolean
   demo?: boolean
 }
@@ -93,12 +95,14 @@ function buildEscPosBytes(receipt: ThermalReceipt): Uint8Array {
   ]
   if (receipt.demo) lines.push(...enc.encode('[DEMO - SIMULATED]\n'))
   if (receipt.provisional) lines.push(...enc.encode('[PROVISIONAL - NO TAIL-CUT]\n'))
+  if (receipt.reviewFlagged) lines.push(...enc.encode('[FLAGGED FOR MANUAL OVERRIDE]\n'))
   lines.push(
     ...enc.encode('--------------------------------\n'),
     0x1b, 0x61, 0x00, // Left
     ...enc.encode(padRow('Order:', receipt.order)),
     ...enc.encode(padRow('Date:', dateStr)),
-    ...enc.encode(padRow('Grader:', receipt.grader || '-')),
+    ...enc.encode(padRow('Operator:', receipt.grader || '-')),
+    ...(receipt.overrideActor ? enc.encode(padRow('Expert:', receipt.overrideActor)) : []),
     ...enc.encode('--------------------------------\n'),
   )
   if (receipt.core) {
@@ -127,7 +131,7 @@ function buildEscPosBytes(receipt: ThermalReceipt): Uint8Array {
     0x1b, 0x45, 0x00,
     ...enc.encode('--------------------------------\n'),
     0x1b, 0x61, 0x01,
-    ...enc.encode(`${receipt.order}\nThank you - TunaEye\n\n\n\n`),
+    ...enc.encode(`${receipt.order}\nVisual quality assist only.\nNot a food-safety test.\nThank you - TunaEye\n\n\n\n`),
     0x1d, 0x56, 0x00 // Cut if supported
   )
   return new Uint8Array(lines)
@@ -189,7 +193,7 @@ export function thermalReceiptHtml(receipt: ThermalReceipt): string {
   const tailLine = receipt.tail ? sample('Tail cut', receipt.tail) : receipt.tailAvailable === false ? line('Tail cut', 'NOT AVAILABLE') : ''
   return `<!doctype html><html><head><meta charset="utf-8"><title>TunaEye ${escape(receipt.order)}</title><style>
 @page{size:58mm 100mm;margin:0}*{box-sizing:border-box}html,body{margin:0;padding:0;width:58mm;min-height:0;background:#fff;color:#000}body{font:11px/1.25 'Courier New',monospace;font-variant-numeric:tabular-nums;-webkit-print-color-adjust:exact;print-color-adjust:exact}.receipt{width:58mm;padding:2mm 5mm 1.5mm;overflow-wrap:anywhere}h1{font-size:13px;line-height:1.2;text-align:center;margin:0 0 1mm;font-weight:700}.center{text-align:center;font-size:10px}.divider{border-top:1px dashed #000;margin:1.5mm 0}.row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.6fr);gap:2mm;padding:.5mm 0;align-items:baseline}.row>b{text-align:right;font-weight:400;min-width:0}.bold{font-size:13px}.bold>b{font-weight:700}.grade{font-size:18px;font-weight:700;text-align:center;line-height:1.2;margin:1mm 0}.barcode{margin:2mm 0 .5mm}.barcode svg{display:block;width:48mm;height:11mm;fill:#000}.order{text-align:center;letter-spacing:.4px;font-size:10px;margin:.5mm 0}.demo{font-weight:700;text-align:center;border:1px solid #000;padding:.5mm;margin:1mm 0}footer{text-align:center;font-size:9px;margin-top:1mm}header,footer,.row,.barcode,.grade{break-inside:avoid}button{display:none}
-</style></head><body><main class="receipt"><h1>${escape(receipt.station || 'TUNAEYE KIOSK')}</h1><div class="center">Grading receipt</div>${receipt.demo ? '<div class="demo">DEMO — SIMULATED PREDICTION</div>' : ''}${receipt.provisional ? '<div class="demo">PROVISIONAL · TAIL-CUT NOT AVAILABLE</div>' : ''}<div class="divider"></div>${line('Order', receipt.order)}${line('Date', new Date(receipt.timestamp).toLocaleString('en-PH', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }))}${line('Grader', receipt.grader)}<div class="divider"></div>${sample('Sashibo core', receipt.core)}${tailLine}<div class="grade">GRADE ${escape(receipt.grade)}</div>${line('Weight', `${receipt.weight} kg`)}${line('Rate / kg', money(receipt.unitRatePerKg))}<div class="divider"></div>${line('TOTAL', money(receipt.total), true)}<div class="barcode">${receiptBarcode(receipt.order)}</div><div class="order">${escape(receipt.order)}</div><footer>Thank you · TunaEye</footer></main></body></html>`
+</style></head><body><main class="receipt"><h1>${escape(receipt.station || 'TUNAEYE KIOSK')}</h1><div class="center">Grading receipt</div>${receipt.demo ? '<div class="demo">DEMO — SIMULATED PREDICTION</div>' : ''}${receipt.provisional ? '<div class="demo">PROVISIONAL · TAIL-CUT NOT AVAILABLE</div>' : ''}${receipt.reviewFlagged ? '<div class="demo">FLAGGED FOR MANUAL OVERRIDE</div>' : ''}<div class="divider"></div>${line('Order', receipt.order)}${line('Date', new Date(receipt.timestamp).toLocaleString('en-PH', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }))}${line('Operator', receipt.grader)}${receipt.overrideActor ? line('Expert', receipt.overrideActor) : ''}<div class="divider"></div>${sample('Sashibo core', receipt.core)}${tailLine}<div class="grade">GRADE ${escape(receipt.grade)}</div>${line('Weight', `${receipt.weight} kg`)}${line('Rate / kg', money(receipt.unitRatePerKg))}<div class="divider"></div>${line('TOTAL', money(receipt.total), true)}<div class="barcode">${receiptBarcode(receipt.order)}</div><div class="order">${escape(receipt.order)}</div><footer>Visual quality assist only · Not a food-safety test.<br>Thank you · TunaEye</footer></main></body></html>`
 }
 
 export async function printTestReceipt(w: Window, stationName = 'TunaEye Kiosk', graderName = 'Station Test'): Promise<true> {

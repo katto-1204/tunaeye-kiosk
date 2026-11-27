@@ -1,5 +1,15 @@
 # Plan
 
+## Expert grader PIN registry, flagged grade card & food safety notice (2026-11-28)
+
+- [x] Add `src/expertGraders.ts` storing Admin-registered Expert Graders with per-grader salted 4-digit PIN hashes and verification.
+- [x] Update `src/exact-admin.ts` (`graders` tab) to register Expert Graders (Name + 4-digit PIN) and display non-override station operators separately.
+- [x] Update `src/kioskState.ts` and `src/exact-ui.ts` to remove the black override card, display the normal Grade A/B/C card with a `FLAGGED FOR MANUAL OVERRIDE` chip, and allow operators to pick a registered Expert Grader and enter that grader's PIN in the Override modal.
+- [x] Add the non-blocking Food Safety Notice on the live camera/scanning screen (`core` / `tail`) and a 1-line visual-assist footer on the 58mm thermal receipt (`src/thermalReceipt.ts`).
+- [x] Build, verify all flows visually with Playwright screenshots (Admin Expert Grader registration, Scanning screen food safety notice, Flagged Grade card without black card, Expert Grader selection + PIN override, and Receipt), and check console/network errors.
+
+Review: Implemented `src/expertGraders.ts` (PBKDF2-SHA256 per-grader PINs with 5-attempt lockout and 2 seeded sample experts), updated Admin Expert Graders to separate authorized experts from scan-only operators, removed the blocking black card in favor of the standard Grade A/B/C card + `FLAGGED FOR MANUAL OVERRIDE` chip/pill, upgraded the Override modal to select a registered Expert Grader + enter their personal PIN, and added the Food Safety Notice on scanning and 58mm receipt output. `npm run build` passed and Playwright verified all 5 screens at 1280×800 with screenshots visually inspected; wrong expert PIN rejected, Elena Reyes PIN `9876` authorized Grade A and recorded `EXPERT OVERRIDE: Elena Reyes` on the 58mm receipt preview. Physical Raspberry Pi hardware and live cloud writes remain outside browser test scope.
+
 ## Kiosk label overlap fixes (2026-11-20)
 
 - [ ] Reproduce overlapping labels and controls in the active exact-HTML kiosk at 1024x600, 1280x800 and 1366x768.

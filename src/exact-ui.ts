@@ -14,6 +14,7 @@ import { isDemoMode, setKioskDemoMode, demoScenarios, getDemoScenario, setDemoSc
 import { enhanceAdmin } from './exact-admin'
 import { showLiveReadiness } from './liveReadiness'
 import { verifyAdminPin, mountPinSettings } from './adminPin'
+import { ensureSeededExpertGraders, listExpertGraders, verifyExpertGraderPin } from './expertGraders'
 import { registerPwa, requestPwaInstall } from './pwa'
 import { printThermalReceipt, printTestReceipt, pairBluetoothPrinter, getConnectedBtPrinterName } from './thermalReceipt'
 
@@ -337,34 +338,51 @@ const runtime = {
       if (button?.isConnected) { button.disabled = false; button.textContent = originalText }
     }
   },
-  override(w: Kiosk) {
+  async override(w: Kiosk) {
     const { S, go, toast } = api(w), d = w.document
     const sashibo = session.results['Sashibo core'], tail = session.results['Tail cut']
     const isProvisional = session.tailAvailability === 'not_available' && !tail
-    const defaultGrade: Grade = sashibo?.originalGrade ?? 'A'
+    const defaultGrade: Grade = preliminaryGrade()
     const presets = ['Visual inspection', 'Confirmed AI grade', 'Color / texture check', ...(isProvisional ? ['Tail-cut unavailable'] : [])]
+    const experts = await listExpertGraders()
+    let selectedExpertId = experts[0]?.id ?? ''
+    const escHtml = (value: string) => value.replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]!))
+    const selectedExpertName = () => experts.find(e => e.id === selectedExpertId)?.name ?? 'No expert selected'
     const overlay = d.createElement('div'); overlay.className = 'ovl'
-    overlay.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="Manual override" style="width:min(740px,95%);padding:24px;border-radius:26px;display:grid;grid-template-columns:1fr 270px;gap:20px;align-items:start">
-      <div style="display:grid;gap:14px">
-        <div><h2 style="margin:0 0 4px;font-size:22px;letter-spacing:-.025em">${isProvisional ? 'Confirm provisional grade' : 'Expert override'}</h2><p style="margin:0;font-size:13px;color:#5b6b84">Sashibo Core: <b>Grade ${sashibo?.originalGrade ?? '—'}</b> (${sashibo?.originalConfidence ?? '—'}%)${tail ? ` · Tail-Cut: <b>Grade ${tail.originalGrade ?? '—'}</b> (${tail.originalConfidence ?? '—'}%)` : ' · Tail-Cut: <b>NOT AVAILABLE</b>'}</p></div>
-        <div><div style="font-size:12px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Final grade</div><div class="g3" style="margin:0">${(['A', 'B', 'C'] as Grade[]).map(g => `<button type="button" class="gopt${g === defaultGrade ? ' on' : ''}" data-grade="${g}" style="height:72px;font-size:32px;display:inline-flex;align-items:center;justify-content:center;text-align:center">${g}</button>`).join('')}</div></div>
-        <div style="display:grid;gap:8px">
-          <div style="font-size:12px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em">Reason (tap or type)</div>
-          <div style="display:flex;flex-wrap:wrap;gap:6px">${presets.map((p, i) => `<button type="button" class="xbn bo" data-reason="${p}" style="height:34px;padding:0 12px;border-radius:999px;font-size:12px;display:inline-flex;align-items:center;justify-content:center;text-align:center;${i === 0 ? 'background:#edf3ff;border-color:#2159e8;color:#2159e8' : ''}">${p}</button>`).join('')}</div>
-          <input class="fi" id="expert-reason" value="${presets[0]}" placeholder="Reason for confirmation or override (required)" style="height:44px;font-size:14px">
+    overlay.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="Manual override" style="width:min(780px,95%);padding:22px 24px;border-radius:26px;display:grid;grid-template-columns:1fr 266px;gap:20px;align-items:start">
+      <div style="display:grid;gap:12px">
+        <div>
+          <h2 style="margin:0 0 4px;font-size:21px;letter-spacing:-.025em">${isProvisional ? 'Confirm provisional grade' : 'Expert grader override'}</h2>
+          <p style="margin:0;font-size:12.5px;color:#5b6b84">Operator: <b>${escHtml(S.name || 'Station operator')}</b> · Core: <b>Grade ${sashibo?.originalGrade ?? '—'}</b> (${sashibo?.originalConfidence ?? '—'}%)${tail ? ` · Tail: <b>Grade ${tail.originalGrade ?? '—'}</b> (${tail.originalConfidence ?? '—'}%)` : ''}</p>
+        </div>
+        <div>
+          <div style="font-size:11.5px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">1. Select registered expert grader</div>
+          ${experts.length
+            ? `<div id="ov-expert-list" style="display:flex;flex-wrap:wrap;gap:7px">${experts.map((ex, i) => `<button type="button" data-expert-id="${escHtml(ex.id)}" style="height:36px;padding:0 13px;border-radius:999px;border:1.5px solid ${i === 0 ? '#2159e8' : '#cbd9ef'};background:${i === 0 ? '#edf3ff' : '#fff'};color:${i === 0 ? '#1d4ed8' : '#182842'};font:700 13px Inter,system-ui,sans-serif;cursor:pointer;display:inline-flex;align-items:center;gap:6px"><span style="width:8px;height:8px;border-radius:50%;background:${i === 0 ? '#2159e8' : '#94a3b8'}"></span>${escHtml(ex.name)}</button>`).join('')}</div>`
+            : `<div style="padding:10px 12px;border-radius:12px;background:#fffbeb;border:1px solid #fde68a;color:#92400e;font-size:12.5px;font-weight:600">No expert graders registered. Add an Expert Grader + PIN in Admin → Expert Graders first.</div>`}
+        </div>
+        <div>
+          <div style="font-size:11.5px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">2. Final grade</div>
+          <div class="g3" style="margin:0">${(['A', 'B', 'C'] as Grade[]).map(g => `<button type="button" class="gopt${g === defaultGrade ? ' on' : ''}" data-grade="${g}" style="height:64px;font-size:30px;display:inline-flex;align-items:center;justify-content:center;text-align:center">${g}</button>`).join('')}</div>
+        </div>
+        <div style="display:grid;gap:7px">
+          <div style="font-size:11.5px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em">3. Reason (tap or type)</div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px">${presets.map((p, i) => `<button type="button" class="xbn bo" data-reason="${p}" style="height:32px;padding:0 11px;border-radius:999px;font-size:12px;display:inline-flex;align-items:center;justify-content:center;text-align:center;${i === 0 ? 'background:#edf3ff;border-color:#2159e8;color:#2159e8' : ''}">${p}</button>`).join('')}</div>
+          <input class="fi" id="expert-reason" value="${presets[0]}" placeholder="Reason for confirmation or override (required)" style="height:42px;font-size:13.5px">
         </div>
       </div>
-      <div style="display:grid;gap:12px;padding:16px;border-radius:20px;background:#f7faff;border:1px solid #e3ebf8">
+      <div style="display:grid;gap:11px;padding:15px;border-radius:20px;background:#f7faff;border:1px solid #e3ebf8">
         <div style="text-align:center">
-          <div style="font-size:12px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em">Station PIN</div>
-          <div id="ov-pin-dots" style="display:flex;justify-content:center;gap:10px;margin:10px 0 4px">${[0, 1, 2, 3].map(() => `<span style="width:14px;height:14px;border-radius:50%;border:2px solid #cbd9ef;background:#fff;display:inline-block"></span>`).join('')}</div>
+          <div style="font-size:11.5px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em">Expert Grader PIN</div>
+          <div id="ov-pin-who" style="font-size:12.5px;font-weight:700;color:#1d4ed8;margin-top:3px">${experts.length ? `PIN for ${escHtml(selectedExpertName())}` : 'No expert registered'}</div>
+          <div id="ov-pin-dots" style="display:flex;justify-content:center;gap:10px;margin:9px 0 3px">${[0, 1, 2, 3].map(() => `<span style="width:14px;height:14px;border-radius:50%;border:2px solid #cbd9ef;background:#fff;display:inline-block"></span>`).join('')}</div>
         </div>
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
-          ${[1, 2, 3, 4, 5, 6, 7, 8, 9, 'C', 0, '⌫'].map(k => `<button type="button" data-ovk="${k}" style="height:48px;border-radius:12px;border:1px solid #d5e1f5;background:#fff;color:#182842;font:700 ${k === 'C' ? '14px' : '20px'} Inter,system-ui,sans-serif;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;text-align:center">${k}</button>`).join('')}
+          ${[1, 2, 3, 4, 5, 6, 7, 8, 9, 'C', 0, '⌫'].map(k => `<button type="button" data-ovk="${k}" style="height:46px;border-radius:12px;border:1px solid #d5e1f5;background:#fff;color:#182842;font:700 ${k === 'C' ? '14px' : '20px'} Inter,system-ui,sans-serif;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;text-align:center">${k}</button>`).join('')}
         </div>
-        <div style="display:grid;grid-template-columns:1fr 1.3fr;gap:8px;margin-top:4px">
+        <div style="display:grid;grid-template-columns:1fr 1.3fr;gap:8px;margin-top:2px">
           <button type="button" class="xbn bo" id="expert-cancel" style="width:100%;height:44px;border-radius:999px;padding:0 12px;display:inline-flex;align-items:center;justify-content:center;text-align:center">Cancel</button>
-          <button type="button" class="xpr" id="expert-save" style="width:100%;height:44px;border-radius:999px;padding:0 14px;display:inline-flex;align-items:center;justify-content:center;text-align:center">${isProvisional ? 'Confirm' : 'Save'}</button>
+          <button type="button" class="xpr" id="expert-save" ${experts.length ? '' : 'disabled'} style="width:100%;height:44px;border-radius:999px;padding:0 14px;display:inline-flex;align-items:center;justify-content:center;text-align:center">${isProvisional ? 'Confirm' : 'Authorize'}</button>
         </div>
       </div>
     </div>`
@@ -376,6 +394,22 @@ const runtime = {
         dot.style.borderColor = filled ? '#2159e8' : '#cbd9ef'
       })
     }
+    const pinWho = overlay.querySelector<HTMLElement>('#ov-pin-who')
+    overlay.querySelectorAll<HTMLButtonElement>('[data-expert-id]').forEach(btn => {
+      btn.onclick = () => {
+        selectedExpertId = btn.dataset.expertId || ''
+        pinVal = ''; syncDots()
+        if (pinWho) pinWho.textContent = `PIN for ${selectedExpertName()}`
+        overlay.querySelectorAll<HTMLButtonElement>('[data-expert-id]').forEach(other => {
+          const active = other === btn
+          other.style.borderColor = active ? '#2159e8' : '#cbd9ef'
+          other.style.background = active ? '#edf3ff' : '#fff'
+          other.style.color = active ? '#1d4ed8' : '#182842'
+          const dot = other.querySelector('span')
+          if (dot) dot.style.background = active ? '#2159e8' : '#94a3b8'
+        })
+      }
+    })
     overlay.querySelectorAll<HTMLButtonElement>('[data-grade]').forEach(b => b.onclick = () => { selected = b.dataset.grade as Grade; overlay.querySelectorAll('[data-grade]').forEach(x => x.classList.toggle('on', x === b)) })
     const reasonInput = overlay.querySelector('#expert-reason') as HTMLInputElement
     overlay.querySelectorAll<HTMLButtonElement>('[data-reason]').forEach(b => b.onclick = () => {
@@ -397,13 +431,25 @@ const runtime = {
     overlay.querySelector<HTMLButtonElement>('#expert-cancel')!.onclick = () => overlay.remove()
     overlay.querySelector<HTMLButtonElement>('#expert-save')!.onclick = async () => {
       const reason = reasonInput.value.trim()
+      if (!selectedExpertId) { toast('Register and select an expert grader first.', 1); return }
       if (!reason) { toast('Select or enter a reason before confirming.', 1); return }
-      if (pinVal.length < 4 || !await runtime.pin(pinVal)) { pinVal = ''; syncDots(); toast('Incorrect PIN or hosted admin authorization required.', 1); return }
+      const verification = await verifyExpertGraderPin(selectedExpertId, pinVal)
+      if (!verification.ok || !verification.grader) {
+        pinVal = ''; syncDots()
+        toast(verification.error || 'Incorrect expert grader PIN.', 1)
+        return
+      }
+      const authorizer = verification.grader.name
       const sample = session.results['Tail cut'] ? 'Tail cut' : 'Sashibo core'
-      session = reducer(session, { type: 'setOverride', sample, grade: selected, reason, actor: S.name, timestamp: new Date().toISOString() })
+      session = reducer(session, { type: 'setOverride', sample, grade: selected, reason, actor: authorizer, timestamp: new Date().toISOString() })
       const updated = session.results[sample]
       if (updated) session = { ...session, results: { ...session.results, [sample]: { ...updated, reviewStatus: 'confirmed', provisional: isProvisional, tailAvailability: isProvisional ? 'not_available' : 'available' } } }
+      try {
+        const log = JSON.parse(localStorage.getItem('tunaeye-audit-log') ?? '[]')
+        localStorage.setItem('tunaeye-audit-log', JSON.stringify([{ id: createId(), timestamp: Date.now(), actor: authorizer, action: 'Expert override', detail: `Operator: ${S.name || 'Unknown'} · Authorized by: ${authorizer} · Grade ${selected} (${reason})` }, ...(Array.isArray(log) ? log : [])].slice(0, 500)))
+      } catch { }
       if (!isDemoMode()) persist(w)
+      toast(`Authorized by ${authorizer} · Grade ${selected}`)
       overlay.remove(); go('receipt')
     }
   },
@@ -429,18 +475,22 @@ const runtime = {
       const receiptOrder = Number(S.detail.o)
       if (!Number.isSafeInteger(receiptOrder) || receiptOrder < 1) throw new Error('The saved receipt order is unavailable.')
       const sample = (key: SampleType) => { const result = results[key]; return result ? { grade: result.originalGrade ?? 'Invalid', confidence: result.originalConfidence } : undefined }
-      return printThermalReceipt(w, { station: S.cfg.name, order: `TE_${String(receiptOrder).padStart(4, '0')}`, grader: anchor.grader, timestamp: anchor.timestamp, weight: parseFloat(anchor.weight), grade: decision.grade!, unitRatePerKg: prices.unitRatePerKg, total: prices.amount, core: sample('Sashibo core'), tail: sample('Tail cut'), provisional: Boolean(decision.provisional), tailAvailable: Boolean(results['Tail cut']), demo: false })
+      const overrideActor = results['Tail cut']?.overrideActor ?? results['Sashibo core']?.overrideActor
+      return printThermalReceipt(w, { station: S.cfg.name, order: `TE_${String(receiptOrder).padStart(4, '0')}`, grader: anchor.grader, timestamp: anchor.timestamp, weight: parseFloat(anchor.weight), grade: decision.grade!, unitRatePerKg: prices.unitRatePerKg, total: prices.amount, core: sample('Sashibo core'), tail: sample('Tail cut'), provisional: Boolean(decision.provisional), reviewFlagged: Boolean(decision.reviewFlagged), overrideActor, tailAvailable: Boolean(results['Tail cut']), demo: false })
     }
     const currentDecision = decisionFor(session)
-    if (currentDecision.next !== 'print') throw new Error('An expert must confirm the final grade.')
-    const grade = currentDecision.grade!, saved = loadRecords().find(record => record.sessionId === sessionId)
+    const grade = currentDecision.grade ?? preliminaryGrade()
+    if (!grade) throw new Error('No grade is available to print.')
+    const saved = loadRecords().find(record => record.sessionId === sessionId)
     const prices = saved?.transaction ?? priceSnapshot(grade, S.w)
     const sample = (key: SampleType) => { const result = session.results[key]; return result ? { grade: result.originalGrade ?? 'Invalid', confidence: result.originalConfidence } : undefined }
-    return printThermalReceipt(w, { station: S.cfg.name, order: `TE_${String(S.order).padStart(4, '0')}`, grader: S.name, timestamp: S.captureTime ?? Date.now(), weight: S.w, grade, unitRatePerKg: prices.unitRatePerKg ?? null, total: prices.amount, core: sample('Sashibo core'), tail: sample('Tail cut'), provisional: Boolean(currentDecision.provisional), tailAvailable: session.tailAvailability !== 'not_available', demo: isDemoMode() })
+    const overrideActor = session.results['Tail cut']?.overrideActor ?? session.results['Sashibo core']?.overrideActor
+    return printThermalReceipt(w, { station: S.cfg.name, order: `TE_${String(S.order).padStart(4, '0')}`, grader: S.name, timestamp: S.captureTime ?? Date.now(), weight: S.w, grade, unitRatePerKg: prices.unitRatePerKg ?? null, total: prices.amount, core: sample('Sashibo core'), tail: sample('Tail cut'), provisional: Boolean(currentDecision.provisional), reviewFlagged: Boolean(currentDecision.reviewFlagged), overrideActor, tailAvailable: session.tailAvailability !== 'not_available', demo: isDemoMode() })
   },
   finish(w: Kiosk) { const { S, go } = api(w); S.hist = history(S.name); go('done') },
   attach(w: Kiosk) {
     const { S, SC, RATE } = api(w)
+    void ensureSeededExpertGraders()
     setKioskDemoMode(localStorage.getItem('tunaeye-explicit-demo') === 'true')
     S.cfg.demo = isDemoMode(); S.cfg.name = localStorage.getItem('tunaeye-station') ?? S.cfg.name
     S.cfg.url = getPiSettings().apiUrl; S.cfg.ep = '/grade'; S.hist = history(S.name); Object.assign(RATE, loadPriceSchedule())
@@ -474,6 +524,20 @@ const runtime = {
         }
         if (sync) sync.onclick = () => void runtime.sync(w)
         if (S.scr !== 'core' && S.scr !== 'tail') stopLocalStream()
+        if (S.scr === 'core' || S.scr === 'tail') {
+          const foot = d.querySelector<HTMLElement>('.lt-foot')
+          if (foot && !d.getElementById('te-food-safety-banner')) {
+            foot.style.cssText = 'position:absolute;left:30px;right:30px;bottom:14px;display:flex;align-items:center;gap:10px'
+            const spacer = d.createElement('span')
+            spacer.style.flex = '1'
+            const notice = d.createElement('div')
+            notice.id = 'te-food-safety-banner'
+            notice.setAttribute('role', 'note')
+            notice.style.cssText = 'display:inline-flex;align-items:center;gap:9px;max-width:740px;padding:7px 14px;border-radius:999px;background:rgba(255,251,235,.94);border:1px solid #fcd34d;color:#78350f;font:500 12px/1.3 Inter,system-ui,sans-serif;box-shadow:0 8px 20px -12px rgba(180,83,9,.28);backdrop-filter:blur(8px)'
+            notice.innerHTML = `<span style="width:22px;height:22px;border-radius:999px;background:#fef3c7;color:#b45309;display:grid;place-items:center;flex:none"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></span><span><b style="color:#92400e">Food Safety:</b> Sanitize chamber surfaces between fish · Visual quality assist only (not a histamine/spoilage test).</span>`
+            foot.append(spacer, notice)
+          }
+        }
         if ((S.scr === 'core' || S.scr === 'tail') && !isDemoMode()) {
           const side = d.querySelector<HTMLElement>('.ltside'), shBtn = d.getElementById('sh')
           if (side && shBtn && !d.getElementById('cam-chooser')) {
@@ -625,20 +689,37 @@ const runtime = {
           if (bars[0] && coreRes?.originalGrade) { const lbl = bars[0].querySelector('.b5h span'); if (lbl) lbl.textContent = `Core · Grade ${coreRes.originalGrade}` }
           if (bars[1] && tailRes?.originalGrade) { const lbl = bars[1].querySelector('.b5h span'); if (lbl) lbl.textContent = `Tail · Grade ${tailRes.originalGrade}` }
           const mixLabel = d.querySelector('.sp5 span'); if (mixLabel) mixLabel.textContent = tailRes ? 'Avg confidence' : 'Model confidence'
-          const needsOverride = decision.next === 'override'
-          const prelim = preliminaryGrade()
-          styleGradeCard(prelim, needsOverride)
+          const isFlagged = Boolean(decision.reviewFlagged)
+          const prelim = decision.grade ?? preliminaryGrade()
+          styleGradeCard(prelim, false)
+          const gt = d.querySelector<HTMLElement>('.gt5')
+          if (gt) gt.textContent = `Grade ${prelim}`
+          const gLetter = d.querySelector<HTMLElement>('.med5-l')
+          if (gLetter) gLetter.textContent = prelim
           if (decision.provisional && chip) { chip.className = 'v5c c-am'; chip.innerHTML = '<i></i>PROVISIONAL' }
-          if (needsOverride) {
-            if (chip) { chip.className = 'v5c c-am'; chip.innerHTML = '<i></i>OVERRIDE REQUIRED' }
-            const h1 = d.querySelector('.v5h h1'); if (h1) h1.textContent = 'Manual override required'
-            const gt = d.querySelector('.gt5'); if (gt) gt.textContent = `Grade ${prelim} · Needs Override`
-            const gs = d.querySelector('.gs5'); if (gs) gs.textContent = 'Tap below to confirm or override'
-            button.textContent = 'Manual override'
-            button.onclick = () => runtime.override(w)
-          } else {
-            button.onclick = () => { if (decision.next === 'print' || decision.grade) api(w).go('receipt') }
+          const ovBtn = d.getElementById('ov') as HTMLButtonElement | null
+          if (isFlagged) {
+            if (chip) {
+              chip.className = 'v5c c-am'
+              chip.innerHTML = `<i></i>${decision.provisional ? 'PROVISIONAL · FLAGGED FOR OVERRIDE' : 'FLAGGED FOR MANUAL OVERRIDE'}`
+            }
+            const med = d.querySelector<HTMLElement>('.med5')
+            if (med && !d.getElementById('te-flagged-disclaimer')) {
+              const disc = d.createElement('div')
+              disc.id = 'te-flagged-disclaimer'
+              disc.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:5px 12px;border-radius:999px;background:rgba(15,23,42,.34);border:1px solid rgba(255,255,255,.42);color:#fef08a;font:700 11.5px/1.2 Inter,system-ui,sans-serif;letter-spacing:.01em;margin:8px auto 2px;align-self:center;white-space:nowrap'
+              disc.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><span>Ask a registered expert grader to verify</span>`
+              const gs = med.querySelector('.gs5')
+              if (gs) gs.after(disc)
+              else med.append(disc)
+            }
+            if (ovBtn) {
+              ovBtn.style.borderColor = '#f59e0b'
+              ovBtn.style.background = '#fffbeb'
+              ovBtn.style.color = '#92400e'
+            }
           }
+          button.onclick = () => { if (decision.next === 'print' || decision.grade || prelim) api(w).go('receipt') }
           d.querySelectorAll('.lg5').forEach(e => e.textContent = decision.detail)
           if (session.tailAvailability === 'not_available') {
             d.querySelectorAll('.ph5-f span').forEach(el => { if (el.textContent?.includes('Tail')) el.textContent = 'Tail-Cut: NOT AVAILABLE' })
@@ -1169,13 +1250,13 @@ const runtime = {
             reprintBtn.before(btPill)
           }
         }
-        if (S.scr === 'receipt' && decision.provisional) {
+        if (S.scr === 'receipt' && (decision.provisional || decision.reviewFlagged)) {
           const rHead = d.querySelector('.rc-h, .rh1')
           if (rHead && !d.getElementById('provisional-receipt-tag')) {
-            const tag = d.createElement('div'); tag.id = 'provisional-receipt-tag'; tag.style.cssText = 'margin:6px 0;padding:4px 10px;border-radius:999px;background:#fff4db;color:#925800;font-size:11px;font-weight:800;display:inline-block'; tag.textContent = 'PROVISIONAL · TAIL-CUT NOT AVAILABLE'; rHead.after(tag)
+            const tag = d.createElement('div'); tag.id = 'provisional-receipt-tag'; tag.style.cssText = 'margin:6px 0;padding:4px 10px;border-radius:999px;background:#fff4db;color:#925800;font-size:11px;font-weight:800;display:inline-block'; tag.textContent = decision.reviewFlagged ? 'FLAGGED FOR MANUAL OVERRIDE' : 'PROVISIONAL · TAIL-CUT NOT AVAILABLE'; rHead.after(tag)
           }
         }
-        const override = d.getElementById('ov'); if (override) override.onclick = () => runtime.override(w)
+        const override = d.getElementById('ov'); if (override) override.onclick = () => { void runtime.override(w) }
         d.querySelectorAll<HTMLElement>('#dmsw,[data-t="demo"]').forEach(e => { e.onclick = () => runtime.mode(w, !isDemoMode()); e.setAttribute('aria-checked', String(isDemoMode())) })
         if (S.scr === 'name') {
           ; (w as any).__teGreetTimer && w.clearInterval((w as any).__teGreetTimer)
@@ -1550,6 +1631,25 @@ const runtime = {
                 if (sp) sp.textContent = 'AVG CONF.'
               }
             })
+            if (!pb.querySelector('#te-rcpt-expert')) {
+              const expertActor = tailRes?.overrideActor ?? coreRes?.overrideActor
+              if (expertActor) {
+                const inspectorRow = [...pb.querySelectorAll<HTMLElement>('p')].find(p => p.querySelector('span')?.textContent?.trim().toUpperCase() === 'INSPECTOR')
+                if (inspectorRow) {
+                  const row = d.createElement('p')
+                  row.id = 'te-rcpt-expert'
+                  row.innerHTML = `<span>EXPERT OVERRIDE</span><b>${expertActor.replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]!))}</b>`
+                  inspectorRow.after(row)
+                }
+              }
+            }
+            if (!pb.querySelector('#te-rcpt-safety')) {
+              const note = d.createElement('div')
+              note.id = 'te-rcpt-safety'
+              note.style.cssText = 'margin-top:8px;padding-top:6px;border-top:1px dashed #cbd5e1;text-align:center;font-size:9.5px;line-height:1.3;color:#64748b'
+              note.textContent = 'Visual quality assist only · Not a food-safety test.'
+              pb.append(note)
+            }
           }
 
           // 2. Redesign the right-hand Receipt Summary Card & Header (.rcr / .rsum)
