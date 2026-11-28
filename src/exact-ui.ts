@@ -3,7 +3,7 @@ import { capturePiImage, gradePiImage, getPiSettings, checkPiHealth, PiIntegrati
 import { initialSession, reducer, decisionFor, combineGrades, ACCEPT_CONFIDENCE, type Session, type SampleType, type Grade } from './kioskState'
 import { saveCapturedEvidence, promoteCapturedEvidence, deleteCapturedEvidence, getCapturedEvidence } from './evidenceStorage'
 import { experimentalPolicy, policyDescription } from './gradingPolicy'
-import { sqliteSaveStatus } from './sqliteStore'
+import { sqliteSaveStatus, queueSqliteState } from './sqliteStore'
 import { loadRecords, saveRecords, type GradingRecord } from './gradingRecords'
 import { loadPriceSchedule, priceSnapshot } from './pricing'
 import { syncPendingRecords, syncPriceSchedule, syncGradersToCloud, SYNC_STATUS_EVENT, type SyncPhase } from './cloudSync'
@@ -14,7 +14,7 @@ import { isDemoMode, setKioskDemoMode, demoScenarios, getDemoScenario, setDemoSc
 import { enhanceAdmin } from './exact-admin'
 import { showLiveReadiness } from './liveReadiness'
 import { verifyAdminPin, mountPinSettings } from './adminPin'
-import { ensureSeededExpertGraders, listExpertGraders, verifyExpertGraderPin } from './expertGraders'
+import { ensureSeededExpertGraders, listExpertGraders, verifyExpertGraderPin, verifyExpertSecondFactor } from './expertGraders'
 import { registerPwa, requestPwaInstall } from './pwa'
 import { printThermalReceipt, printTestReceipt, pairBluetoothPrinter, getConnectedBtPrinterName } from './thermalReceipt'
 
@@ -23,10 +23,6 @@ let session: Session = { ...initialSession }
 let sessionId = createId(), order: number | null = null, capturing = false
 let tabletEntry = false
 let receiptSkipped = false
-let secretGradeAArmed = typeof localStorage !== 'undefined' && localStorage.getItem('tunaeye-secret-a') === '1'
-let secretScanCount = 0
-let secretAOffsetIdx = 0
-const SECRET_A_DELTAS = [7.4, 9.1, 6.8, 10.3, 8.2]
 const previews: Record<string, string> = {}
 let activeCameraSource = typeof localStorage !== 'undefined' ? (localStorage.getItem('tunaeye-camera-source') || 'pi') : 'pi'
 let droidcamUrl = typeof localStorage !== 'undefined' ? (localStorage.getItem('tunaeye-droidcam-url') || 'http://192.168.1.2:4747') : 'http://192.168.1.2:4747'
@@ -232,32 +228,7 @@ const runtime = {
           ; (d.getElementById('stage') ?? d.body).append(ov)
         w.setTimeout(() => { if (ov.isConnected) ov.remove() }, 2000)
       }
-      const rawResult = await gradePiImage(blob, sample)
-      let result = rawResult
-      if (secretGradeAArmed && rawResult.outcome !== 'invalid') {
-        secretScanCount += 1
-        if (secretScanCount >= 3 && secretScanCount <= 4) {
-          const baseConf = typeof rawResult.confidence === 'number' && rawResult.confidence > 0 ? rawResult.confidence : 81.2
-          const delta = SECRET_A_DELTAS[secretAOffsetIdx % SECRET_A_DELTAS.length]
-          secretAOffsetIdx += 1
-          const boosted = Number(Math.min(96.8, Math.max(82.4, baseConf < 82 ? 82 + (baseConf % 7) + (delta - 6) : baseConf + (delta - 5))).toFixed(2))
-          const remB = Number(Math.max(1.8, (100 - boosted) * 0.68).toFixed(2))
-          const remC = Number(Math.max(0.8, 100 - boosted - remB).toFixed(2))
-          result = {
-            ...rawResult,
-            outcome: 'valid',
-            grade: 'A',
-            confidence: boosted,
-            rawConfidence: Number((boosted / 100).toFixed(4)),
-            scores: { A: boosted, B: remB, C: remC }
-          }
-        }
-        if (secretScanCount >= 4) {
-          secretGradeAArmed = false
-          secretScanCount = 0
-          try { localStorage.setItem('tunaeye-secret-a', '0') } catch { }
-        }
-      }
+      const result = await gradePiImage(blob, sample)
       const invalidSampleText = `This image is not recognized as a valid ${sample}. Camera reset — please scan again.`
       if (result.outcome === 'invalid') {
         if (temporaryId) await deleteCapturedEvidence(temporaryId)
@@ -347,9 +318,11 @@ const runtime = {
     const experts = await listExpertGraders()
     let selectedExpertId = experts[0]?.id ?? ''
     const escHtml = (value: string) => value.replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]!))
-    const selectedExpertName = () => experts.find(e => e.id === selectedExpertId)?.name ?? 'No expert selected'
+    const selectedExpert = () => experts.find(e => e.id === selectedExpertId)
+    const selectedExpertName = () => selectedExpert()?.name ?? 'No expert selected'
+    const selectedNeeds2fa = () => Boolean(selectedExpert()?.totpEnabled && selectedExpert()?.totpSecret)
     const overlay = d.createElement('div'); overlay.className = 'ovl'
-    overlay.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="Manual override" style="width:min(780px,95%);padding:22px 24px;border-radius:26px;display:grid;grid-template-columns:1fr 266px;gap:20px;align-items:start">
+    overlay.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="Manual override" style="width:min(790px,95%);padding:22px 24px;border-radius:26px;display:grid;grid-template-columns:1fr 278px;gap:20px;align-items:start">
       <div style="display:grid;gap:12px">
         <div>
           <h2 style="margin:0 0 4px;font-size:21px;letter-spacing:-.025em">${isProvisional ? 'Confirm provisional grade' : 'Expert grader override'}</h2>
@@ -358,7 +331,7 @@ const runtime = {
         <div>
           <div style="font-size:11.5px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">1. Select registered expert grader</div>
           ${experts.length
-            ? `<div id="ov-expert-list" style="display:flex;flex-wrap:wrap;gap:7px">${experts.map((ex, i) => `<button type="button" data-expert-id="${escHtml(ex.id)}" style="height:36px;padding:0 13px;border-radius:999px;border:1.5px solid ${i === 0 ? '#2159e8' : '#cbd9ef'};background:${i === 0 ? '#edf3ff' : '#fff'};color:${i === 0 ? '#1d4ed8' : '#182842'};font:700 13px Inter,system-ui,sans-serif;cursor:pointer;display:inline-flex;align-items:center;gap:6px"><span style="width:8px;height:8px;border-radius:50%;background:${i === 0 ? '#2159e8' : '#94a3b8'}"></span>${escHtml(ex.name)}</button>`).join('')}</div>`
+            ? `<div id="ov-expert-list" style="display:flex;flex-wrap:wrap;gap:7px">${experts.map((ex, i) => `<button type="button" data-expert-id="${escHtml(ex.id)}" style="height:36px;padding:0 13px;border-radius:999px;border:1.5px solid ${i === 0 ? '#2159e8' : '#cbd9ef'};background:${i === 0 ? '#edf3ff' : '#fff'};color:${i === 0 ? '#1d4ed8' : '#182842'};font:700 13px Inter,system-ui,sans-serif;cursor:pointer;display:inline-flex;align-items:center;gap:6px"><span style="width:8px;height:8px;border-radius:50%;background:${i === 0 ? '#2159e8' : '#94a3b8'}"></span>${escHtml(ex.name)}${ex.totpEnabled ? '<em style="font-style:normal;font-size:10px;font-weight:800;padding:2px 6px;border-radius:999px;background:#dbeafe;color:#1d4ed8;margin-left:2px">2FA</em>' : ''}</button>`).join('')}</div>`
             : `<div style="padding:10px 12px;border-radius:12px;background:#fffbeb;border:1px solid #fde68a;color:#92400e;font-size:12.5px;font-weight:600">No expert graders registered. Add an Expert Grader + PIN in Admin → Expert Graders first.</div>`}
         </div>
         <div>
@@ -371,18 +344,25 @@ const runtime = {
           <input class="fi" id="expert-reason" value="${presets[0]}" placeholder="Reason for confirmation or override (required)" style="height:42px;font-size:13.5px">
         </div>
       </div>
-      <div style="display:grid;gap:11px;padding:15px;border-radius:20px;background:#f7faff;border:1px solid #e3ebf8">
+      <div style="display:grid;gap:10px;padding:15px;border-radius:20px;background:#f7faff;border:1px solid #e3ebf8">
         <div style="text-align:center">
-          <div style="font-size:11.5px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em">Expert Grader PIN</div>
+          <div style="font-size:11.5px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em">Factor 1 · Expert PIN</div>
           <div id="ov-pin-who" style="font-size:12.5px;font-weight:700;color:#1d4ed8;margin-top:3px">${experts.length ? `PIN for ${escHtml(selectedExpertName())}` : 'No expert registered'}</div>
-          <div id="ov-pin-dots" style="display:flex;justify-content:center;gap:10px;margin:9px 0 3px">${[0, 1, 2, 3].map(() => `<span style="width:14px;height:14px;border-radius:50%;border:2px solid #cbd9ef;background:#fff;display:inline-block"></span>`).join('')}</div>
+          <div id="ov-pin-dots" style="display:flex;justify-content:center;gap:10px;margin:8px 0 2px">${[0, 1, 2, 3].map(() => `<span style="width:14px;height:14px;border-radius:50%;border:2px solid #cbd9ef;background:#fff;display:inline-block"></span>`).join('')}</div>
         </div>
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
-          ${[1, 2, 3, 4, 5, 6, 7, 8, 9, 'C', 0, '⌫'].map(k => `<button type="button" data-ovk="${k}" style="height:46px;border-radius:12px;border:1px solid #d5e1f5;background:#fff;color:#182842;font:700 ${k === 'C' ? '14px' : '20px'} Inter,system-ui,sans-serif;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;text-align:center">${k}</button>`).join('')}
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:7px">
+          ${[1, 2, 3, 4, 5, 6, 7, 8, 9, 'C', 0, '⌫'].map(k => `<button type="button" data-ovk="${k}" style="height:44px;border-radius:12px;border:1px solid #d5e1f5;background:#fff;color:#182842;font:700 ${k === 'C' ? '14px' : '19px'} Inter,system-ui,sans-serif;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;text-align:center">${k}</button>`).join('')}
+        </div>
+        <div id="ov-totp-wrap" style="display:${selectedNeeds2fa() ? 'grid' : 'none'};gap:5px;padding-top:6px;border-top:1px dashed #cbd9ef">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:6px">
+            <span style="font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.04em">Factor 2 · Offline 2FA</span>
+            <span style="font-size:10px;font-weight:700;color:#1d4ed8;background:#dbeafe;padding:2px 7px;border-radius:999px">TOTP / Backup</span>
+          </div>
+          <input class="fi" id="ov-totp-code" inputmode="text" maxlength="10" autocomplete="one-time-code" placeholder="6-digit code or XXXX-XXXX" style="height:40px;font:700 15px ui-monospace,Consolas,monospace;text-align:center;letter-spacing:.12em;background:#fff">
         </div>
         <div style="display:grid;grid-template-columns:1fr 1.3fr;gap:8px;margin-top:2px">
-          <button type="button" class="xbn bo" id="expert-cancel" style="width:100%;height:44px;border-radius:999px;padding:0 12px;display:inline-flex;align-items:center;justify-content:center;text-align:center">Cancel</button>
-          <button type="button" class="xpr" id="expert-save" ${experts.length ? '' : 'disabled'} style="width:100%;height:44px;border-radius:999px;padding:0 14px;display:inline-flex;align-items:center;justify-content:center;text-align:center">${isProvisional ? 'Confirm' : 'Authorize'}</button>
+          <button type="button" class="xbn bo" id="expert-cancel" style="width:100%;height:42px;border-radius:999px;padding:0 12px;display:inline-flex;align-items:center;justify-content:center;text-align:center">Cancel</button>
+          <button type="button" class="xpr" id="expert-save" ${experts.length ? '' : 'disabled'} style="width:100%;height:42px;border-radius:999px;padding:0 14px;display:inline-flex;align-items:center;justify-content:center;text-align:center">${isProvisional ? 'Confirm' : 'Authorize'}</button>
         </div>
       </div>
     </div>`
@@ -395,11 +375,15 @@ const runtime = {
       })
     }
     const pinWho = overlay.querySelector<HTMLElement>('#ov-pin-who')
+    const totpWrap = overlay.querySelector<HTMLElement>('#ov-totp-wrap')
+    const totpInput = overlay.querySelector<HTMLInputElement>('#ov-totp-code')
     overlay.querySelectorAll<HTMLButtonElement>('[data-expert-id]').forEach(btn => {
       btn.onclick = () => {
         selectedExpertId = btn.dataset.expertId || ''
         pinVal = ''; syncDots()
         if (pinWho) pinWho.textContent = `PIN for ${selectedExpertName()}`
+        if (totpWrap) totpWrap.style.display = selectedNeeds2fa() ? 'grid' : 'none'
+        if (totpInput) totpInput.value = ''
         overlay.querySelectorAll<HTMLButtonElement>('[data-expert-id]').forEach(other => {
           const active = other === btn
           other.style.borderColor = active ? '#2159e8' : '#cbd9ef'
@@ -439,17 +423,26 @@ const runtime = {
         toast(verification.error || 'Incorrect expert grader PIN.', 1)
         return
       }
+      const secondFactor = await verifyExpertSecondFactor(selectedExpertId, totpInput?.value ?? '')
+      if (!secondFactor.ok) {
+        toast(secondFactor.error || 'Offline 2FA verification failed.', 1)
+        totpInput?.focus()
+        return
+      }
       const authorizer = verification.grader.name
+      const authMethod = secondFactor.method === 'recovery' ? 'PIN + Recovery Code' : secondFactor.method === 'totp' ? 'PIN + Offline TOTP' : 'PIN'
       const sample = session.results['Tail cut'] ? 'Tail cut' : 'Sashibo core'
       session = reducer(session, { type: 'setOverride', sample, grade: selected, reason, actor: authorizer, timestamp: new Date().toISOString() })
       const updated = session.results[sample]
       if (updated) session = { ...session, results: { ...session.results, [sample]: { ...updated, reviewStatus: 'confirmed', provisional: isProvisional, tailAvailability: isProvisional ? 'not_available' : 'available' } } }
       try {
         const log = JSON.parse(localStorage.getItem('tunaeye-audit-log') ?? '[]')
-        localStorage.setItem('tunaeye-audit-log', JSON.stringify([{ id: createId(), timestamp: Date.now(), actor: authorizer, action: 'Expert override', detail: `Operator: ${S.name || 'Unknown'} · Authorized by: ${authorizer} · Grade ${selected} (${reason})` }, ...(Array.isArray(log) ? log : [])].slice(0, 500)))
+        const auditPayload = JSON.stringify([{ id: createId(), timestamp: Date.now(), actor: authorizer, action: 'Expert override', detail: `Operator: ${S.name || 'Unknown'} · Authorized by: ${authorizer} (${authMethod}) · Grade ${selected} (${reason})` }, ...(Array.isArray(log) ? log : [])].slice(0, 500))
+        localStorage.setItem('tunaeye-audit-log', auditPayload)
+        queueSqliteState('tunaeye-audit-log', auditPayload)
       } catch { }
       if (!isDemoMode()) persist(w)
-      toast(`Authorized by ${authorizer} · Grade ${selected}`)
+      toast(secondFactor.method === 'recovery' ? `Authorized by ${authorizer} (Recovery code used · ${secondFactor.remainingRecovery} left)` : `Authorized by ${authorizer} (${authMethod}) · Grade ${selected}`)
       overlay.remove(); go('receipt')
     }
   },
@@ -1806,31 +1799,6 @@ const runtime = {
           enhanceAdmin(w, { refresh: () => api(w).R(), notice: (text, error) => api(w).toast(text, error ? 1 : 0), setDemo: value => runtime.mode(w, value) })
           if (S.tab === 'settings') { const host = d.querySelector<HTMLElement>('.ea'); if (host) mountPinSettings(w, host) }
           d.querySelectorAll('.as > div').forEach(el => { if (el.textContent?.includes('System online')) el.textContent = navigator.onLine ? 'Network available · Pi not checked' : 'Network offline · records retained' })
-          const logoutBtn = d.querySelector<HTMLElement>('.as #lo')
-          if (logoutBtn && !d.getElementById('te-secret-a-btn')) {
-            const row = d.createElement('div')
-            row.style.cssText = 'display:flex;align-items:center;gap:6px;width:100%'
-            logoutBtn.parentElement?.insertBefore(row, logoutBtn)
-            logoutBtn.style.flex = '1'
-            const secBtn = d.createElement('button')
-            secBtn.type = 'button'
-            secBtn.id = 'te-secret-a-btn'
-            secBtn.setAttribute('aria-label', 'simulate secret')
-            const syncSecBtn = () => {
-              const on = secretGradeAArmed
-              secBtn.title = on ? `Armed (${secretScanCount}/4 scans -> Grade A, then normal)` : 'simulate secret'
-              secBtn.style.cssText = `flex:none;width:28px;height:28px;border-radius:50%;border:1px solid ${on ? 'rgba(37,99,235,.7)' : 'rgba(148,163,184,.35)'};background:${on ? 'rgba(37,99,235,.14)' : 'transparent'};color:${on ? '#2563eb' : '#94a3b8'};opacity:${on ? '1' : '0.32'};box-shadow:${on ? '0 0 12px 2px rgba(37,99,235,.45)' : 'none'};display:grid;place-items:center;cursor:pointer;padding:0;transition:all .18s ease`
-              secBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke-opacity=".45"/><path d="M8.7 16.2 12 7.5l3.3 8.7"/><path d="M9.8 13.5h4.4"/></svg>`
-            }
-            syncSecBtn()
-            secBtn.onclick = () => {
-              secretGradeAArmed = !secretGradeAArmed
-              secretScanCount = 0
-              try { localStorage.setItem('tunaeye-secret-a', secretGradeAArmed ? '1' : '0') } catch { }
-              syncSecBtn()
-            }
-            row.append(logoutBtn, secBtn)
-          }
         }
       }
     const done = SC.done

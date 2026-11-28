@@ -1,3 +1,5 @@
+import { queueSqliteState } from './sqliteStore'
+
 const KEY = 'tunaeye-admin-pin-v1'
 const ATTEMPTS = 'tunaeye-admin-pin-attempts'
 type Credential = { salt: string; hash: string }
@@ -36,7 +38,9 @@ export async function changeAdminPin(current: string, next: string): Promise<voi
   if (!/^\d{4}$/.test(next)) throw Error('Use a four-digit administrator PIN.')
   if (!await verifyAdminPin(current)) throw Error('The current administrator PIN is incorrect.')
   const salt = hex(crypto.getRandomValues(new Uint8Array(16)).buffer)
-  localStorage.setItem(KEY, JSON.stringify({ salt, hash: await hash(next, salt) }))
+  const payload = JSON.stringify({ salt, hash: await hash(next, salt) })
+  localStorage.setItem(KEY, payload)
+  queueSqliteState(KEY, payload)
 }
 
 export function mountPinSettings(w: Window, host: HTMLElement): void {

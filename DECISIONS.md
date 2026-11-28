@@ -92,16 +92,13 @@ When **both** Sashibo Core and Tail-Cut have been scanned:
 
 ---
 
-## 5. Grade Card Color & Visual Rules (`IF → THEN`)
+## 5. Grade Card Color & Flagged Override Rules (`IF → THEN`)
 
-- **IF** Manual Override is required (`decision.next === 'override'`):
-  - **THEN** Hero Grade Card = **Black Gradient** (`#090d16` → `#1e293b`), white text, primary button = **`Manual override`**.
-- **ELSE IF** Grade = **`A`**:
-  - **THEN** Hero Grade Card, Receipt Summary Card, and Completion Card = **Green Gradient** (`#0d9458` → `#12a56a`), white grade letter, **solid white percentage chip** (`#ffffff` with dark green text).
-- **ELSE IF** Grade = **`B`**:
-  - **THEN** Cards = **Yellow/Amber Gradient** (`#d97706` → `#eab308`), white grade letter, **solid white percentage chip**.
-- **ELSE IF** Grade = **`C`**:
-  - **THEN** Cards = **Red Gradient** (`#dc2626` → `#ef4444`), white grade letter, **solid white percentage chip**.
+- **IF** Grade = **`A`** → Hero Grade Card, Receipt Summary Card, and Completion Card = **Green Gradient** (`#0d9458` → `#12a56a`).
+- **IF** Grade = **`B`** → **Yellow/Amber Gradient** (`#d97706` → `#eab308`).
+- **IF** Grade = **`C`** → **Red Gradient** (`#dc2626` → `#ef4444`).
+- **IF** `decision.reviewFlagged === true` (low combined confidence, A vs C disagreement, or provisional `< 60%`):
+  - **THEN** keep the normal Grade A/B/C card (no blocking black card), display the amber **`FLAGGED FOR MANUAL OVERRIDE`** header chip + in-card warning pill, highlight **`Override`**, and allow operators to call an Admin-registered **Expert Grader** to authorize using their **personal 4-digit PIN + optional 100% offline TOTP 2FA** (or single-use recovery code).
 
 ---
 
@@ -119,24 +116,12 @@ When **both** Sashibo Core and Tail-Cut have been scanned:
 
 ---
 
-## 7. Printing & Completion Rules (`IF → THEN`)
+## 7. Printing, Food Safety & Offline Durability Rules (`IF → THEN`)
 
+- **Scanning Screen (`core` / `tail`):** Always displays a non-blocking **Food Safety** notice in the bottom footer bar (`.lt-foot`) outside the viewfinder.
 - **Receipt Screen (`receipt`):**
-  - **IF** a 58mm Bluetooth printer was already paired (via **`Test print`** on Sign-In or **`Pair BT Printer`** on Receipt/Records):
-    - **THEN** auto-print directly via **Web Bluetooth ESC/POS** after `700ms`.
-  - **IF** no Bluetooth printer is connected:
-    - **THEN** **do NOT auto-print**; wait for the grader to tap **Print** (opens system print dialog) or **Pair BT Printer** or **Skip**.
-- **Completion Screen (`done`):**
-  - **IF** receipt was printed → heading = **`Results printed.`**
-  - **IF** receipt was skipped → heading = **`Results recorded.`**
-  - **THEN** run a **3-second countdown** (`3` → `2` → `1`) on the centered **`Grade another`** button and automatically start the next fish (`weight`).
-
----
-
-## 8. Secret Admin `"A"` Mode (`#te-secret-a-btn`)
-
-- **Location:** Small circular **`A`** SVG icon in the Admin header (`Admin access` → `PIN: 1234`) next to **Sync now**.
-- **IF** Armed (emerald green):
-  - **Scans 1 & 2:** Grade normally using the real model / demo scenario.
-  - **Scan 3 and onward (while armed):** Any valid fish scan is promoted to **Grade A** with a naturally varied high confidence (`82.4% – 96.8%`).
-- **IF** Tapped again: Disarms immediately and resets scan count to `0`.
+  - **IF** a 58mm Bluetooth printer was already paired → auto-print via **Web Bluetooth ESC/POS** after `700ms`.
+  - **IF** no Bluetooth printer is connected → wait for manual **Print**, **Pair BT Printer**, or **Skip**.
+  - Every receipt includes the 1-line footer `Visual quality assist only · Not a food-safety test.` plus `EXPERT OVERRIDE: <Name>` when overridden.
+- **Completion Screen (`done`):** Shows **`Results printed.`** or **`Results recorded.`** with a 3-second countdown to the next fish.
+- **Durability & Sync:** Station state (expert graders, PIN/TOTP config, prices, audit logs, settings) mirrors to SQLite WAL (`server/station.py` `/local-api/state`) and drains all pending records + audit logs to Supabase when online. Secret Admin `"A"` mode has been removed.

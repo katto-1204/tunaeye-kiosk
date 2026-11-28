@@ -19,6 +19,7 @@ def execute(method, path, body, database):
         db.execute('PRAGMA journal_mode=WAL')
         db.execute('CREATE TABLE IF NOT EXISTS records (id TEXT PRIMARY KEY, payload TEXT NOT NULL)')
         db.execute('CREATE TABLE IF NOT EXISTS evidence (id TEXT PRIMARY KEY, metadata TEXT NOT NULL, image BLOB NOT NULL)')
+        db.execute('CREATE TABLE IF NOT EXISTS station_state (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at INTEGER NOT NULL)')
         if method == 'GET' and path == '/local-api/health':
             probe_id = '__readiness__' + db.execute('SELECT lower(hex(randomblob(16)))').fetchone()[0]
             db.execute('SAVEPOINT readiness_probe')
@@ -30,6 +31,15 @@ def execute(method, path, body, database):
                 db.execute('ROLLBACK TO readiness_probe')
                 db.execute('RELEASE readiness_probe')
             return {'sqlite': 'ready', 'writable': True}
+        if method == 'GET' and path == '/local-api/state':
+            return {'state': {row[0]: row[1] for row in db.execute('SELECT key, value FROM station_state')}}
+        if method == 'POST' and path == '/local-api/state':
+            key = body.get('key') if isinstance(body, dict) else None
+            value = body.get('value') if isinstance(body, dict) else None
+            if not isinstance(key, str) or not key or len(key) > 120 or not isinstance(value, str) or len(value) > 2 * 1024 * 1024:
+                raise ValueError('Invalid station state payload')
+            db.execute('INSERT OR REPLACE INTO station_state VALUES (?,?,strftime(\'%s\',\'now\'))', (key, value))
+            return {'saved': key}
         if method == 'GET' and path == '/local-api/records':
             return {'records': [json.loads(row[0]) for row in db.execute('SELECT payload FROM records')]}
         if method == 'GET' and path.startswith('/local-api/evidence/'):

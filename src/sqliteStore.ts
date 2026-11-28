@@ -45,3 +45,44 @@ export async function sqliteSaveStatus(): Promise<string> {
   await pending
   return failure ? `Saved in browser only. ${failure}. Keep this browser data until SQLite backup succeeds.` : 'Saved to SQLite on this station.'
 }
+
+export const DURABLE_STATE_KEYS = [
+  'tunaeye-expert-graders-v1',
+  'tunaeye-admin-pin-v1',
+  'tunaeye-prices',
+  'tunaeye-audit-log',
+  'tunaeye-station',
+  'tunaeye-graders',
+  'tunaeye-auto-sync',
+] as const
+
+export function queueSqliteState(key: string, value: string) {
+  pending = pending.then(async () => {
+    try {
+      const response = await fetch('/local-api/state', {
+        method: 'POST',
+        signal: AbortSignal.timeout(5000),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key, value }),
+      })
+      if (!response.ok) throw Error('SQLite state backup failed')
+    } catch { /* Browser storage remains active when sidecar is offline. */ }
+  })
+}
+
+export async function restoreSqliteStationState(): Promise<void> {
+  try {
+    const response = await fetch('/local-api/state', { cache: 'no-store', signal: AbortSignal.timeout(3000) })
+    if (!response.ok) return
+    const state = (await response.json()).state as Record<string, string> | undefined
+    if (!state || typeof state !== 'object') return
+    for (const key of DURABLE_STATE_KEYS) {
+      const localVal = localStorage.getItem(key)
+      if (localVal === null && typeof state[key] === 'string') {
+        localStorage.setItem(key, state[key])
+      } else if (localVal !== null && state[key] !== localVal) {
+        queueSqliteState(key, localVal)
+      }
+    }
+  } catch { /* Sidecar offline — browser storage continues operating normally. */ }
+}

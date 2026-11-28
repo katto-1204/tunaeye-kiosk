@@ -65,13 +65,18 @@ async function pruneVerifiedLocalRecords() {
   if (removed.size) saveRecords(records.filter(record => !removed.has(record.id)))
 }
 
-async function runPendingSync(limit = 50, graders?: string[]): Promise<SyncSummary> {
+async function runPendingSync(limit?: number, graders?: string[]): Promise<SyncSummary> {
   if (!isSupabaseConfigured()) throw new Error('Supabase is missing from this build. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY, then redeploy or rebuild the kiosk.')
   const allowed = graders?.length ? new Set(graders.map(g => g.trim().toLocaleLowerCase())) : null
   const allPending = loadRecords().filter(record => record.transaction?.syncState !== 'synced' && (!allowed || allowed.has(record.grader.trim().toLocaleLowerCase())))
-  const pending = allPending.slice(0, Math.max(1, limit))
+  const effectiveLimit = typeof limit === 'number' && limit > 0 ? limit : allPending.length
+  const pending = allPending.slice(0, Math.max(0, effectiveLimit))
   const summary: SyncSummary = { synced: 0, failed: 0, skipped: Math.max(0, allPending.length - pending.length), waiting: 0 }
-  if (!pending.length) { emitSyncStatus('synced'); return summary }
+  if (!pending.length) {
+    await syncAuditLogs().catch(() => undefined)
+    emitSyncStatus('synced')
+    return summary
+  }
   emitSyncStatus('connecting')
   try {
     await requireCloudConnection()
@@ -82,89 +87,125 @@ async function runPendingSync(limit = 50, graders?: string[]): Promise<SyncSumma
   }
   const supabase = getSupabase()
   const user = await ensureSupabaseUser()
-  emitSyncStatus('syncing')
+  emitSyncStatus('syncing', `0/${pending.length}`)
 
-  for (const record of pending) {
-    setSyncState(record.id, 'syncing')
-    try {
-      const isDemoRecord = record.result?.modelSource === 'demo'
-      const evidence = record.capturedImageId ? await getCapturedEvidence(record.capturedImageId) : undefined
-      if (record.capturedImageId && !evidence && !isDemoRecord) throw new Error('Captured evidence is missing. The record remains pending.')
-      let imagePath = record.remoteImagePath ?? evidence?.remotePath ?? null
-      if (evidence && !imagePath) {
-        imagePath = `${user.id}/${record.id}/${sampleType(record.sample)}.${imageExtension(evidence.mimeType)}`
-        await updateEvidenceSyncState(evidence.id, 'syncing')
-        const { error: uploadError } = await supabase.storage.from(BUCKET).upload(imagePath, evidence.blob, { contentType: evidence.mimeType, upsert: true })
-        if (uploadError) throw uploadError
-      }
+  const CHUNK_SIZE = 50
+  let networkLost = false
+  for (let offset = 0; offset < pending.length && !networkLost; offset += CHUNK_SIZE) {
+    const batch = pending.slice(offset, offset + CHUNK_SIZE)
+    for (const record of batch) {
+      setSyncState(record.id, 'syncing')
+      try {
+        const isDemoRecord = record.result?.modelSource === 'demo'
+        const evidence = record.capturedImageId ? await getCapturedEvidence(record.capturedImageId) : undefined
+        if (record.capturedImageId && !evidence && !isDemoRecord) throw new Error('Captured evidence is missing. The record remains pending.')
+        let imagePath = record.remoteImagePath ?? evidence?.remotePath ?? null
+        if (evidence && !imagePath) {
+          imagePath = `${user.id}/${record.id}/${sampleType(record.sample)}.${imageExtension(evidence.mimeType)}`
+          await updateEvidenceSyncState(evidence.id, 'syncing')
+          const { error: uploadError } = await supabase.storage.from(BUCKET).upload(imagePath, evidence.blob, { contentType: evidence.mimeType, upsert: true })
+          if (uploadError) throw uploadError
+        }
 
-      const cloudRecord: Database['public']['Tables']['grading_records']['Insert'] = {
-        id: record.id,
-        user_id: user.id,
-        source: 'kiosk',
-        station_id: localStorage.getItem('tunaeye-station') ?? 'TunaEye Station 01',
-        session_id: record.sessionId,
-        grader_name: record.grader,
-        sample_type: sampleType(record.sample),
-        fish_id: record.fish,
-        weight_kg: Number.parseFloat(record.weight) || null,
-        grade: grade(record),
-        confidence: record.result?.originalConfidence ?? null,
-        result_status: record.result?.provisional ? 'provisional' : (record.result?.status ?? record.status),
-        original_grade: record.result?.originalGrade as 'A' | 'B' | 'C' | null | undefined,
-        override_grade: record.result?.overrideGrade as 'A' | 'B' | 'C' | null | undefined,
-        override_reason: record.result?.overrideReason || null,
-        override_actor: record.result?.overrideActor ?? null,
-        override_at: record.result?.overrideAt ?? null,
-        currency_code: record.transaction?.currency ?? 'PHP',
-        grade_unit_rate_per_kg: record.transaction?.unitRatePerKg ?? null,
-        total_fish_price: record.transaction?.amount ?? null,
-        capture_id: record.result?.captureId ?? null,
-        inference_id: record.result?.inferenceId ?? null,
-        raw_confidence: record.result?.rawConfidence ?? null,
-        scores: record.result?.scores ?? null,
-        image_type: record.result?.imageType ?? null,
-        model_source: record.result?.modelSource ?? null,
-        image_path: imagePath,
-        captured_at: new Date(evidence?.capturedAt ?? record.timestamp).toISOString(),
-        updated_at: new Date().toISOString(),
+        const cloudRecord: Database['public']['Tables']['grading_records']['Insert'] = {
+          id: record.id,
+          user_id: user.id,
+          source: 'kiosk',
+          station_id: localStorage.getItem('tunaeye-station') ?? 'TunaEye Station 01',
+          session_id: record.sessionId,
+          grader_name: record.grader,
+          sample_type: sampleType(record.sample),
+          fish_id: record.fish,
+          weight_kg: Number.parseFloat(record.weight) || null,
+          grade: grade(record),
+          confidence: record.result?.originalConfidence ?? null,
+          result_status: record.result?.provisional ? 'provisional' : (record.result?.status ?? record.status),
+          original_grade: record.result?.originalGrade as 'A' | 'B' | 'C' | null | undefined,
+          override_grade: record.result?.overrideGrade as 'A' | 'B' | 'C' | null | undefined,
+          override_reason: record.result?.overrideReason || null,
+          override_actor: record.result?.overrideActor ?? null,
+          override_at: record.result?.overrideAt ?? null,
+          currency_code: record.transaction?.currency ?? 'PHP',
+          grade_unit_rate_per_kg: record.transaction?.unitRatePerKg ?? null,
+          total_fish_price: record.transaction?.amount ?? null,
+          capture_id: record.result?.captureId ?? null,
+          inference_id: record.result?.inferenceId ?? null,
+          raw_confidence: record.result?.rawConfidence ?? null,
+          scores: record.result?.scores ?? null,
+          image_type: record.result?.imageType ?? null,
+          model_source: record.result?.modelSource ?? null,
+          image_path: imagePath,
+          captured_at: new Date(evidence?.capturedAt ?? record.timestamp).toISOString(),
+          updated_at: new Date().toISOString(),
+        }
+        const verifiedFields = 'id,user_id,source,station_id,session_id,grader_name,sample_type,fish_id,weight_kg,grade,confidence,result_status,original_grade,override_grade,override_reason,override_actor,override_at,capture_id,inference_id,raw_confidence,scores,image_type,model_source,currency_code,grade_unit_rate_per_kg,total_fish_price,image_path,captured_at'
+        const { data: verified, error: verifyError } = await supabase
+          .from('grading_records')
+          .upsert(cloudRecord, { onConflict: 'id' })
+          .select(verifiedFields)
+          .single()
+        if (verifyError || !verified) throw verifyError ?? new Error('Cloud persistence could not be verified.')
+        const expected = cloudRecord as Record<string, unknown>
+        const actual = verified as unknown as Record<string, unknown>
+        for (const field of verifiedFields.split(',')) {
+          if (!sameValue(field, actual[field], expected[field])) throw new Error(`Cloud verification failed for ${field}. The local record remains pending.`)
+        }
+        if (evidence && imagePath) await markEvidenceSynced(evidence.id, imagePath)
+        setSyncState(record.id, 'synced', undefined, imagePath ?? undefined)
+        summary.synced += 1
+        emitSyncStatus('syncing', `${summary.synced + summary.failed}/${pending.length}`)
+      } catch (error) {
+        if (isCloudNetworkError(error)) {
+          reportCloudConnection(false)
+          if (record.capturedImageId) await updateEvidenceSyncState(record.capturedImageId, 'pending').catch(() => undefined)
+          setSyncState(record.id, 'pending')
+          summary.waiting = pending.length - summary.synced - summary.failed
+          summary.firstError = new CloudUnavailableError().message
+          networkLost = true
+          break
+        }
+        const message = errorMessage(error)
+        if (record.capturedImageId) await updateEvidenceSyncState(record.capturedImageId, 'failed').catch(() => undefined)
+        setSyncState(record.id, 'failed', message)
+        summary.failed += 1
+        summary.firstError ??= message
       }
-      const verifiedFields = 'id,user_id,source,station_id,session_id,grader_name,sample_type,fish_id,weight_kg,grade,confidence,result_status,original_grade,override_grade,override_reason,override_actor,override_at,capture_id,inference_id,raw_confidence,scores,image_type,model_source,currency_code,grade_unit_rate_per_kg,total_fish_price,image_path,captured_at'
-      const { data: verified, error: verifyError } = await supabase
-        .from('grading_records')
-        .upsert(cloudRecord, { onConflict: 'id' })
-        .select(verifiedFields)
-        .single()
-      if (verifyError || !verified) throw verifyError ?? new Error('Cloud persistence could not be verified.')
-      const expected = cloudRecord as Record<string, unknown>
-      const actual = verified as unknown as Record<string, unknown>
-      for (const field of verifiedFields.split(',')) {
-        if (!sameValue(field, actual[field], expected[field])) throw new Error(`Cloud verification failed for ${field}. The local record remains pending.`)
-      }
-      if (evidence && imagePath) await markEvidenceSynced(evidence.id, imagePath)
-      setSyncState(record.id, 'synced', undefined, imagePath ?? undefined)
-      summary.synced += 1
-      emitSyncStatus('syncing', `${summary.synced + summary.failed}/${pending.length}`)
-    } catch (error) {
-      if (isCloudNetworkError(error)) {
-        reportCloudConnection(false)
-        if (record.capturedImageId) await updateEvidenceSyncState(record.capturedImageId, 'pending').catch(() => undefined)
-        setSyncState(record.id, 'pending')
-        summary.waiting = pending.length - summary.synced - summary.failed
-        summary.firstError = new CloudUnavailableError().message
-        break
-      }
-      const message = errorMessage(error)
-      if (record.capturedImageId) await updateEvidenceSyncState(record.capturedImageId, 'failed').catch(() => undefined)
-      setSyncState(record.id, 'failed', message)
-      summary.failed += 1
-      summary.firstError ??= message
     }
   }
+  if (!networkLost) await syncAuditLogs().catch(() => undefined)
   await pruneVerifiedLocalRecords()
   await sqliteSaveStatus()
   emitSyncStatus(summary.failed > 0 ? 'failed' : summary.waiting > 0 ? 'offline' : 'synced', summary.firstError)
   return summary
+}
+
+export async function syncAuditLogs(): Promise<number> {
+  if (!isSupabaseConfigured() || !navigator.onLine) return 0
+  try {
+    const raw = JSON.parse(localStorage.getItem('tunaeye-audit-log') ?? '[]') as Array<{ id: string; timestamp: number; actor: string; action: string; detail: string }>
+    if (!Array.isArray(raw) || !raw.length) return 0
+    const syncedIds = new Set<string>(JSON.parse(localStorage.getItem('tunaeye-audit-synced-ids') ?? '[]'))
+    const unsynced = raw.filter(entry => entry?.id && !syncedIds.has(entry.id)).slice(0, 200)
+    if (!unsynced.length) return 0
+    const user = await ensureSupabaseUser()
+    const stationId = localStorage.getItem('tunaeye-station') ?? 'TunaEye Station 01'
+    const rows: Database['public']['Tables']['audit_logs']['Insert'][] = unsynced.map(entry => ({
+      id: entry.id,
+      user_id: user.id,
+      station_id: stationId,
+      actor: String(entry.actor || 'Station'),
+      action: String(entry.action || 'Event'),
+      detail: String(entry.detail || ''),
+      occurred_at: new Date(entry.timestamp || Date.now()).toISOString(),
+    }))
+    const { error } = await getSupabase().from('audit_logs').upsert(rows, { onConflict: 'id', ignoreDuplicates: true })
+    if (error) return 0
+    for (const row of rows) syncedIds.add(row.id)
+    localStorage.setItem('tunaeye-audit-synced-ids', JSON.stringify([...syncedIds].slice(-1000)))
+    return rows.length
+  } catch {
+    return 0
+  }
 }
 
 export function syncPendingRecords(options?: { limit?: number; graders?: string[] }): Promise<SyncSummary> {

@@ -1,5 +1,15 @@
 # Plan
 
+## Offline TOTP 2FA, Secret "A" removal, SQLite state durability, Audit & Full-Queue Sync (2026-11-28)
+
+- [x] Remove Secret Admin `"A"` mode (`#te-secret-a-btn`, `secretGradeAArmed`, `SECRET_A_DELTAS`) from `src/exact-ui.ts` and `DECISIONS.md`.
+- [x] Add SQLite `station_state` table + `/local-api/state` endpoints in `server/station.py`, unit test in `server/test_station.py`, and automatic backup/restore in `src/sqliteStore.ts` & `src/main.tsx`.
+- [x] Build `src/offlineTotp.ts` (100% offline RFC 6238 TOTP, zero-dependency ISO/IEC 18004 SVG QR generator, 5 single-use offline recovery codes, 58mm thermal slip print) and integrate into `src/expertGraders.ts`, Admin enrollment (`src/exact-admin.ts`), and Override verification (`src/exact-ui.ts`).
+- [x] Add append-only `supabase/migrations/202611280001_audit_logs.sql`, `syncAuditLogs()`, full-queue chunked batch sync in `src/cloudSync.ts`, and `Auto-sync when online` toggle in Admin Settings + `src/main.tsx`.
+- [x] Sync `CODEBASE.md` & `DECISIONS.md` to current 75% rules and verify with Python unittest, production build, and Playwright visual screenshots.
+
+Review: All 7 Python SQLite tests (including `station_state` persistence across restarts) passed, `npm run build` passed, and Playwright verified Offline TOTP enrollment (cross-checked against Node.js `crypto` RFC 6238), QR SVG rendering, 5 recovery codes, Secret "A" removal, Factor 1 PIN + Factor 2 TOTP override authorization, and `/local-api/state` SQLite backup. Note: Item #10 (Pi LAN API token + local HTTPS) remains intentionally deferred per user request.
+
 ## Expert grader PIN registry, flagged grade card & food safety notice (2026-11-28)
 
 - [x] Add `src/expertGraders.ts` storing Admin-registered Expert Graders with per-grader salted 4-digit PIN hashes and verification.

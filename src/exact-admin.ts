@@ -8,7 +8,9 @@ import type { Grade } from './kioskState'
 import { createId } from './id'
 import { isDemoMode } from './demoMode'
 import { mountTechnicalPanel } from './exact-technical'
-import { ensureSeededExpertGraders, listExpertGradersSync, registerExpertGrader, removeExpertGrader } from './expertGraders'
+import { disableExpertTotp, enableExpertTotp, ensureSeededExpertGraders, listExpertGradersSync, registerExpertGrader, removeExpertGrader, type ExpertGrader } from './expertGraders'
+import { buildOtpAuthUri, formatBase32Secret, generateRecoveryCodes, generateTotpSecret, printRecoveryCodesSlip, renderQrSvg } from './offlineTotp'
+import { queueSqliteState } from './sqliteStore'
 
 type Context = { refresh: () => void; notice: (text: string, error?: boolean) => void; setDemo: (enabled: boolean) => void }
 type TimeRange = 'all' | 'month' | 'week' | 'today' | 'yesterday' | 'hour' | 'older'
@@ -16,7 +18,11 @@ type View = { query: string; page: number; range: TimeRange; cloud: GradingRecor
 const views = new WeakMap<Window, View>()
 const esc = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!))
 const read = <T>(key: string, fallback: T): T => { try { return JSON.parse(localStorage.getItem(key) ?? 'null') ?? fallback } catch { return fallback } }
-const audit = (action: string, detail: string) => localStorage.setItem('tunaeye-audit-log', JSON.stringify([{ id: createId(), timestamp: Date.now(), actor: 'Admin', action, detail }, ...read<unknown[]>('tunaeye-audit-log', [])].slice(0, 500)))
+const audit = (action: string, detail: string) => {
+  const payload = JSON.stringify([{ id: createId(), timestamp: Date.now(), actor: 'Admin', action, detail }, ...read<unknown[]>('tunaeye-audit-log', [])].slice(0, 500))
+  localStorage.setItem('tunaeye-audit-log', payload)
+  queueSqliteState('tunaeye-audit-log', payload)
+}
 const style = `
 .ad{background:#f7f8fb;color:#182842;font-family:Inter,system-ui,sans-serif}.ax .ad .as{width:190px;background:#fff;border-right:1px solid #eef1f6;box-shadow:none;padding:28px 14px;gap:7px}.ad .br2{color:#182842;padding:0 6px 30px}.ad .br2 small{color:#8491a5}.ad .br2 i{background:#edf3ff}.ax .ad .an{height:46px;min-height:46px;color:#738198;font-weight:500;border-radius:14px;font-size:14px}.ax .ad .an:hover{background:#f3f6fc;color:#2159e8}.ax .ad .an.on{background:#edf3ff;color:#2159e8;box-shadow:none}.ax .ad .an.on svg{color:#2159e8}.ad .as>[style]{color:#8491a5!important}.ad .am{background:#f7f8fb;padding:28px 26px 0}.ad .ah{align-items:center;padding-bottom:24px}.ad .ah h1{font:600 28px/1.2 Inter,system-ui,sans-serif;letter-spacing:-.035em;color:#182842}.ad .ah .xm{font-size:13px;color:#8491a5;margin-top:7px}.ad .ah .xpr{border-radius:999px;font-size:14px;height:44px;padding:0 20px;font-weight:600;box-shadow:none}.ad .ah .xbn{border-radius:999px;font-size:14px;height:44px;font-weight:500}.ea .ea-metric{padding:22px 18px;min-height:125px;position:relative}.ea-metric strong{display:block;margin-top:16px;font-weight:600;font-size:30px}.ea-metric:first-child{background:linear-gradient(120deg,#1959ec,#538cfb);color:#fff;border-color:transparent;box-shadow:0 12px 24px -16px #2159e8}.ea-metric:first-child small{color:#e1ebff}.ea-metric small{font-size:12px}.ea-metric .ea-metric-mark{position:absolute;right:16px;top:17px;background:#f2f6ff;border-radius:50%;width:28px;height:28px;display:grid;place-items:center;color:#3773ee;font-size:14px}.ea-overview-charts{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(0,1fr);gap:18px}.ea-chart{height:166px;display:flex;gap:14px;align-items:end;padding-top:12px;background:repeating-linear-gradient(to top,transparent 0,transparent 39px,#f1f3f8 40px)}.ea-day{flex:1;display:flex;align-items:center;flex-direction:column;gap:8px;min-width:0}.ea-day i{display:block;width:70%;max-width:48px;border-radius:9px 9px 4px 4px;background:linear-gradient(#347af5,#d9e7ff);min-height:3px}.ea-day b,.ea-day small{font-size:11px;color:#8190a5;font-weight:500}.ea-grade-ring{margin:14px auto;width:116px;height:116px;border-radius:50%;display:grid;place-content:center;text-align:center;background:radial-gradient(circle,#fff 58%,transparent 59%),conic-gradient(#2264ee var(--grade-a),#8bb3ff 0 var(--grade-b),#d9e6fc 0 var(--grade-valid),#e9edf3 0)}.ea-grade-ring strong{font-size:26px;font-weight:600;line-height:1.2}.ea-grade-ring small{font-size:10px;color:#8491a5}.ea-grade-legend{display:flex;justify-content:space-around;gap:8px;font-size:12px;color:#71809a}.ea-grade-legend b{display:block;color:#182842;font-size:15px}.ea-overview-charts .ea-card>p{font-size:12px;margin-bottom:0}.ea .ea-card h2{font-family:Inter,system-ui,sans-serif;letter-spacing:-.025em}.ea th{text-align:left}.ea thead{background:#f8f9fc}.ea .et{margin-top:4px}.ea .et> .ea-row p{font-size:13px}.ea .et h2{font-size:20px}.ea-filter-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.ea-filter-bar button{min-height:36px;padding:6px 14px;font-size:13px;background:#fff;border:1px solid #dce6f6;color:#475569}.ea-filter-bar button.is-active{background:#2159e8;border-color:#2159e8;color:#fff}
 @media(max-width:1050px){.ad .ah h1{font-size:26px}.ad .am{padding:22px 20px 0}.ea-overview-charts{grid-template-columns:1.4fr 1fr}.ea .ea-metric{min-height:110px}.ea-metric strong{font-size:28px}}@media(max-width:700px){.ea-overview-charts{grid-template-columns:1fr}}
@@ -71,7 +77,7 @@ export function enhanceAdmin(w: Window, context: Context) {
   const expertNameSet = new Set(expertGraders.map(e => e.name.trim().toLocaleLowerCase()))
   const scanOnlyOperators = graders.filter(name => !expertNameSet.has(name.trim().toLocaleLowerCase()))
   const draw = () => enhanceAdmin(w, context)
-  const saveGraders = (next: string[]) => { localStorage.setItem('tunaeye-graders', JSON.stringify(next)); draw() }
+  const saveGraders = (next: string[]) => { const payload = JSON.stringify(next); localStorage.setItem('tunaeye-graders', payload); queueSqliteState('tunaeye-graders', payload); draw() }
   const button = (id: string, label: string, primary = false) => `<button id="${id}" class="${primary ? 'primary' : ''}" type="button">${label}</button>`
   const section = (title: string, content: string, intro = '') => `<section class="ea-card"><h2>${title}</h2>${intro ? `<p>${intro}</p>` : ''}${content}</section>`
   const empty = '<div class="ea-empty">No records yet. Completed captures remain on the station until you choose Sync now.</div>'
@@ -110,8 +116,8 @@ export function enhanceAdmin(w: Window, context: Context) {
     case 'prices': html = section('A fair price for every grade.', `<div class="ea-form" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr))">${(['A', 'B', 'C'] as Grade[]).map(grade => `<label>Grade ${grade} · PHP / kg<input id="ea-price-${grade}" type="number" min="0" step="0.01" value="${loadPriceSchedule()[grade]}"></label>`).join('')}</div><div class="ea-row" style="margin-top:20px">${button('ea-prices-save', 'Save price schedule', true)}</div>`, 'Save locally first, then verify the schedule in Supabase. Historical records keep their saved rate.'); break
     case 'graders': html = section(
       'Authorized expert graders',
-      `<div class="ea-row" style="gap:10px;align-items:stretch"><input id="ea-grader-name" aria-label="Expert grader full name" placeholder="Expert grader full name" maxlength="160" style="flex:1;min-width:200px"><input id="ea-grader-pin" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" aria-label="4-digit override PIN" placeholder="4-digit PIN" style="width:148px">${button('ea-grader-add', 'Register expert grader', true)}</div>${expertGraders.length ? expertGraders.map(expert => { const count = records.filter(r => r.grader.trim().toLocaleLowerCase() === expert.name.trim().toLocaleLowerCase()).length; const overrides = records.filter(r => r.result?.overrideActor?.trim().toLocaleLowerCase() === expert.name.trim().toLocaleLowerCase()).length; const isCurrent = activeGrader && activeGrader.toLocaleLowerCase() === expert.name.trim().toLocaleLowerCase(); return `<div class="ea-row between" style="border-top:1px solid #e3eaf8;margin-top:15px;padding-top:15px"><div><b>${esc(expert.name)}</b> <span class="ea-badge synced">Override PIN set</span>${isCurrent ? ' <span class="ea-badge">Currently at station</span>' : ''}<small style="display:block;color:#64738d;margin-top:2px">${count} scan${count === 1 ? '' : 's'} · ${overrides} override${overrides === 1 ? '' : 's'} authorized</small></div><div class="ea-row">${count > 0 ? `<button data-grader-records="${esc(expert.name)}">View records</button>` : ''}<button data-remove-expert="${esc(expert.id)}" aria-label="Remove ${esc(expert.name)}">Remove</button></div></div>` }).join('') : '<div class="ea-empty">No expert graders registered yet. Add an expert grader with a 4-digit PIN to authorize manual overrides.</div>'}`,
-      'Only expert graders registered here can be selected in the Manual Override modal and authorize grades with their personal 4-digit PIN.'
+      `<div class="ea-row" style="gap:10px;align-items:center"><input id="ea-grader-name" aria-label="Expert grader full name" placeholder="Expert grader full name" maxlength="160" style="flex:1;min-width:190px"><input id="ea-grader-pin" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" aria-label="4-digit override PIN" placeholder="4-digit PIN" style="width:136px"><label style="display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:600;color:#182842;cursor:pointer;white-space:nowrap"><input id="ea-grader-2fa" type="checkbox" style="width:18px;height:18px;min-height:18px;margin:0;accent-color:#2159e8">Require Offline 2FA (TOTP)</label>${button('ea-grader-add', 'Register expert grader', true)}</div>${expertGraders.length ? expertGraders.map(expert => { const count = records.filter(r => r.grader.trim().toLocaleLowerCase() === expert.name.trim().toLocaleLowerCase()).length; const overrides = records.filter(r => r.result?.overrideActor?.trim().toLocaleLowerCase() === expert.name.trim().toLocaleLowerCase()).length; const isCurrent = activeGrader && activeGrader.toLocaleLowerCase() === expert.name.trim().toLocaleLowerCase(); const totpOn = Boolean(expert.totpEnabled && expert.totpSecret); return `<div class="ea-row between" style="border-top:1px solid #e3eaf8;margin-top:15px;padding-top:15px"><div><b>${esc(expert.name)}</b> <span class="ea-badge synced">Override PIN set</span> ${totpOn ? '<span class="ea-badge synced" style="background:#dbeafe;color:#1d4ed8">Offline 2FA (TOTP) ✓</span>' : '<span class="ea-badge" style="background:#f1f5f9;color:#475569">PIN only</span>'}${isCurrent ? ' <span class="ea-badge">Currently at station</span>' : ''}<small style="display:block;color:#64738d;margin-top:2px">${count} scan${count === 1 ? '' : 's'} · ${overrides} override${overrides === 1 ? '' : 's'} authorized${totpOn ? ` · ${(expert.recoveryCodeHashes ?? []).length} recovery codes left` : ''}</small></div><div class="ea-row">${totpOn ? `<button data-disable-2fa="${esc(expert.id)}">Disable 2FA</button>` : `<button data-setup-2fa="${esc(expert.id)}">Set up Offline 2FA</button>`}${count > 0 ? `<button data-grader-records="${esc(expert.name)}">View records</button>` : ''}<button data-remove-expert="${esc(expert.id)}" aria-label="Remove ${esc(expert.name)}">Remove</button></div></div>` }).join('') : '<div class="ea-empty">No expert graders registered yet. Add an expert grader with a 4-digit PIN to authorize manual overrides.</div>'}`,
+      'Only expert graders registered here can be selected in the Manual Override modal and authorize grades with their personal 4-digit PIN (plus optional 100% offline TOTP 2FA).'
     ) + section(
       'Station operators (scan-only)',
       scanOnlyOperators.length ? scanOnlyOperators.map(name => { const count = records.filter(r => r.grader.trim().toLocaleLowerCase() === name.trim().toLocaleLowerCase()).length; const isCurrent = activeGrader && activeGrader.toLocaleLowerCase() === name.trim().toLocaleLowerCase(); return `<div class="ea-row between" style="border-top:1px solid #e3eaf8;margin-top:14px;padding-top:14px"><div><b>${esc(name)}</b> <span class="ea-badge">Operator · Scan only</span>${isCurrent ? ' <span class="ea-badge synced">Currently at station</span>' : ''}<small style="display:block;color:#64738d;margin-top:2px">${count} sample${count === 1 ? '' : 's'} scanned</small></div><div class="ea-row">${count > 0 ? `<button data-grader-records="${esc(name)}">View records</button>` : ''}<button data-remove-operator="${esc(name)}" aria-label="Remove ${esc(name)}">Remove</button></div></div>` }).join('') : '<div class="ea-empty">No scan-only operators recorded yet. Any worker can operate the station, while only registered experts above can override.</div>',
@@ -135,9 +141,17 @@ export function enhanceAdmin(w: Window, context: Context) {
   }
   if (state.tab === 'settings') {
     const controls = d.createElement('section'); controls.className = 'ea-card'
-    controls.innerHTML = `<h2>Grading operating mode</h2><p>Demo uses simulated inference and keeps results out of operational records and cloud sync. Live mode uses the configured Pi.</p><button id="ea-demo-toggle" type="button" role="switch" aria-label="Demo mode" aria-checked="${isDemoMode()}">${isDemoMode() ? 'Demo enabled — switch to live' : 'Live enabled — switch to demo'}</button>`
+    const autoSyncOn = localStorage.getItem('tunaeye-auto-sync') !== 'false'
+    controls.innerHTML = `<h2>Grading mode &amp; cloud auto-sync</h2><p>Demo uses simulated inference and keeps results out of operational records. Auto-sync uploads pending records and audit logs automatically whenever internet returns.</p><div class="ea-row"><button id="ea-demo-toggle" type="button" role="switch" aria-label="Demo mode" aria-checked="${isDemoMode()}">${isDemoMode() ? 'Demo enabled — switch to live' : 'Live enabled — switch to demo'}</button><button id="ea-autosync-toggle" type="button" role="switch" aria-label="Auto sync online" aria-checked="${autoSyncOn}">${autoSyncOn ? 'Auto-sync when online: ON' : 'Auto-sync when online: OFF'}</button></div>`
     body.querySelector('.ea')!.append(controls)
-    controls.querySelector<HTMLButtonElement>('button')!.onclick = () => context.setDemo(!isDemoMode())
+    controls.querySelector<HTMLButtonElement>('#ea-demo-toggle')!.onclick = () => context.setDemo(!isDemoMode())
+    controls.querySelector<HTMLButtonElement>('#ea-autosync-toggle')!.onclick = () => {
+      const next = !(localStorage.getItem('tunaeye-auto-sync') !== 'false')
+      localStorage.setItem('tunaeye-auto-sync', String(next))
+      queueSqliteState('tunaeye-auto-sync', String(next))
+      audit('Auto-sync updated', next ? 'Auto-sync enabled when online' : 'Auto-sync disabled (manual only)')
+      draw()
+    }
   }
   const get = <T extends HTMLElement>(id: string) => d.getElementById(id) as T | null
   const bind = (id: string, action: () => void) => { const el = get<HTMLButtonElement>(id); if (el) el.onclick = action }
@@ -205,21 +219,111 @@ export function enhanceAdmin(w: Window, context: Context) {
   wireReview(); if (state.tab === 'records') { renderRows(); const search = get<HTMLInputElement>('ea-search'); if (search) search.oninput = () => { v.query = search.value; v.page = 1; renderRows() } }
   bind('ea-cloud', async () => { if (!isSupabaseConfigured()) return tell('Cloud is not configured in this build.', true); try { v.cloud = await fetchCloudRecords(); draw(); tell('Cloud records loaded') } catch (e) { tell(e instanceof Error ? e.message : 'Cloud records unavailable', true) } })
   bind('ea-export', () => { const fields = ['id', 'grader', 'sample', 'weight', 'grade', 'status'] as const, quote = (text: unknown) => '"' + String(text ?? '').replaceAll('"', '""') + '"', csv = [fields.join(','), ...records.map(row => fields.map(field => quote(row[field])).join(','))].join('\r\n'), url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' })), a = d.createElement('a'); a.href = url; a.download = 'tunaeye-records.csv'; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); audit('Records exported', `${records.length} records exported to CSV`) })
+  const openTotpEnrollmentModal = (expert: ExpertGrader) => {
+    const secret = generateTotpSecret()
+    const uri = buildOtpAuthUri(expert.name, secret, 'TunaEye')
+    const qrSvg = renderQrSvg(uri, 172)
+    const recoveryCodes = generateRecoveryCodes(5)
+    const overlay = d.createElement('div'); overlay.className = 'ovl'; overlay.id = 'ea-totp-modal'
+    overlay.innerHTML = `<section class="sheet ea" role="dialog" aria-modal="true" aria-label="Offline 2FA setup" style="width:min(740px,95%);padding:24px;border-radius:26px;gap:14px">
+      <div class="ea-row between">
+        <div>
+          <h2 style="margin:0 0 3px">Set up Offline 2FA (TOTP) · ${esc(expert.name)}</h2>
+          <p style="margin:0;font-size:13px">100% offline RFC 6238 verification — works with Google Authenticator, Authy, or Apple Passwords without internet.</p>
+        </div>
+        <span class="ea-badge synced" style="background:#dbeafe;color:#1d4ed8">Offline Ready</span>
+      </div>
+      <div style="display:grid;grid-template-columns:210px 1fr;gap:18px;align-items:start">
+        <div style="padding:14px;border-radius:20px;background:#f8faff;border:1px solid #dbe6fa;text-align:center">
+          <div style="display:inline-block;padding:8px;border-radius:14px;background:#fff;border:1px solid #e2e8f0">${qrSvg}</div>
+          <div style="margin-top:8px;font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em">Manual Key (Base32)</div>
+          <code id="ea-totp-secret" data-secret="${esc(secret)}" style="display:block;margin-top:4px;font:700 11.5px/1.35 ui-monospace,Consolas,monospace;color:#0f172a;word-break:break-all">${esc(formatBase32Secret(secret))}</code>
+        </div>
+        <div style="display:grid;gap:12px">
+          <div style="padding:13px 15px;border-radius:16px;background:#fffbeb;border:1px solid #fde68a">
+            <div class="ea-row between" style="margin-bottom:6px">
+              <b style="font-size:13px;color:#92400e">5 Single-Use Offline Recovery Codes</b>
+              <button type="button" id="ea-totp-print-codes" style="min-height:32px;padding:4px 12px;font-size:12px;background:#fff;border-color:#fcd34d;color:#92400e">Print 58mm slip</button>
+            </div>
+            <div id="ea-totp-recovery-list" style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;font:700 12.5px ui-monospace,Consolas,monospace;color:#78350f">
+              ${recoveryCodes.map(c => `<span style="padding:5px 8px;border-radius:8px;background:#fff;border:1px solid #fde68a;text-align:center">${esc(c)}</span>`).join('')}
+            </div>
+            <small style="display:block;margin-top:6px;font-size:11.5px;color:#92400e">Use a backup code if the expert’s phone battery dies at the dock. Each code works once.</small>
+          </div>
+          <div style="display:grid;gap:6px">
+            <label style="font-size:13px;font-weight:600;color:#182842">Scan the QR code, then enter the 6-digit code to activate
+              <input id="ea-totp-verify-input" inputmode="numeric" maxlength="6" placeholder="000000" autocomplete="one-time-code" style="font:700 20px ui-monospace,Consolas,monospace;letter-spacing:.22em;text-align:center">
+            </label>
+            <div id="ea-totp-error" role="alert" style="font-size:12.5px;font-weight:600;color:#dc2626;min-height:18px"></div>
+          </div>
+          <div class="ea-row between">
+            <small style="font-size:11.5px;color:#64748b">Clock check: tablet &amp; phone clocks stay within ±30s (±1 step tolerance).</small>
+            <div class="ea-row">
+              <button type="button" id="ea-totp-cancel">Cancel</button>
+              <button type="button" id="ea-totp-activate" class="primary">Verify &amp; Activate 2FA</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>`
+    d.getElementById('stage')?.append(overlay)
+    overlay.querySelector<HTMLButtonElement>('#ea-totp-cancel')!.onclick = () => overlay.remove()
+    overlay.querySelector<HTMLButtonElement>('#ea-totp-print-codes')!.onclick = () => {
+      printRecoveryCodesSlip(w, expert.name, recoveryCodes, localStorage.getItem('tunaeye-station') ?? state.cfg.name)
+      tell('Prepared 58mm recovery codes slip')
+    }
+    overlay.querySelector<HTMLButtonElement>('#ea-totp-activate')!.onclick = async () => {
+      const code = (overlay.querySelector('#ea-totp-verify-input') as HTMLInputElement).value.trim()
+      const errEl = overlay.querySelector('#ea-totp-error') as HTMLElement
+      try {
+        await enableExpertTotp(expert.id, secret, code, recoveryCodes)
+        audit('Offline 2FA enabled', `${expert.name} enrolled in offline TOTP 2FA (5 recovery codes generated)`)
+        overlay.remove()
+        draw()
+        tell(`Offline 2FA activated for ${expert.name}`)
+      } catch (err) {
+        errEl.textContent = err instanceof Error ? err.message : 'Verification failed.'
+      }
+    }
+  }
   bind('ea-grader-add', async () => {
     const name = value('ea-grader-name')
     const pin = value('ea-grader-pin')
+    const want2fa = Boolean(get<HTMLInputElement>('ea-grader-2fa')?.checked)
     try {
       const created = await registerExpertGrader(name, pin)
       if (!graders.some(item => item.toLocaleLowerCase() === created.name.toLocaleLowerCase())) {
-        localStorage.setItem('tunaeye-graders', JSON.stringify([...graders, created.name]))
+        const nextList = [...graders, created.name]
+        localStorage.setItem('tunaeye-graders', JSON.stringify(nextList))
+        queueSqliteState('tunaeye-graders', JSON.stringify(nextList))
       }
       void syncGradersToCloud([created.name])
       audit('Expert grader registered', `${created.name} (personal override PIN set)`)
       draw()
       tell(`Registered expert grader ${created.name}`)
+      if (want2fa) openTotpEnrollmentModal(created)
     } catch (err) {
       tell(err instanceof Error ? err.message : 'Could not register expert grader.', true)
     }
+  })
+  body.querySelectorAll<HTMLButtonElement>('[data-setup-2fa]').forEach(el => el.onclick = () => {
+    const expert = expertGraders.find(item => item.id === el.dataset.setup2fa)
+    if (expert) openTotpEnrollmentModal(expert)
+  })
+  body.querySelectorAll<HTMLButtonElement>('[data-disable-2fa]').forEach(el => el.onclick = () => {
+    const expert = expertGraders.find(item => item.id === el.dataset.disable2fa)
+    if (!expert) return
+    const modal = (w as Window & { eval: (s: string) => any }).eval('modal')
+    modal({
+      title: 'Disable Offline 2FA?',
+      body: `${expert.name} will revert to 4-digit PIN only for manual overrides.`,
+      ok: 'Disable 2FA',
+      onOk: async () => {
+        await disableExpertTotp(expert.id)
+        audit('Offline 2FA disabled', expert.name)
+        draw()
+      }
+    })
   })
   body.querySelectorAll<HTMLButtonElement>('[data-grader-records]').forEach(el => el.onclick = () => { v.query = el.dataset.graderRecords || ''; v.range = 'all'; v.page = 1; d.querySelector<HTMLButtonElement>('.an[data-t="records"]')?.click() })
   body.querySelectorAll<HTMLButtonElement>('[data-remove-expert]').forEach(el => el.onclick = () => {
@@ -251,8 +355,8 @@ export function enhanceAdmin(w: Window, context: Context) {
       }
     })
   })
-  bind('ea-prices-save', async () => { const prices = Object.fromEntries((['A', 'B', 'C'] as Grade[]).map(grade => [grade, Number(value(`ea-price-${grade}`))])) as Record<Grade, number>; if (Object.values(prices).some(number => !Number.isFinite(number) || number < 0)) return tell('Enter a non-negative price for every grade.', true); localStorage.setItem('tunaeye-prices', JSON.stringify(prices)); Object.assign((w as Window & { eval: (s: string) => any }).eval('RATE'), prices); audit('Prices updated', 'Local price schedule saved'); try { await syncPriceSchedule(prices); tell('Price schedule saved and verified in cloud') } catch (e) { tell(`Prices saved locally. ${e instanceof Error ? e.message : 'Cloud sync unavailable.'}`, true) } })
-  bind('ea-settings-save', () => { const endpoint = value('ea-api'), camera = value('ea-camera'); for (const url of [endpoint, camera]) if (url && !/^https?:\/\/[^\s]+$/i.test(url)) return tell('Use a valid HTTP or HTTPS device URL.', true); if (!value('ea-station')) return tell('Enter a station name.', true); localStorage.setItem('tunaeye-station', value('ea-station')); localStorage.setItem('tunaeye-rpi-url', endpoint); localStorage.setItem('tunaeye-camera-url', camera); localStorage.setItem('tunaeye-model-name', value('ea-model')); Object.assign(state.cfg, { name: value('ea-station'), url: endpoint, model: value('ea-model') }); audit('Settings updated', 'Station and Pi connection settings saved'); tell('Station settings saved') })
+  bind('ea-prices-save', async () => { const prices = Object.fromEntries((['A', 'B', 'C'] as Grade[]).map(grade => [grade, Number(value(`ea-price-${grade}`))])) as Record<Grade, number>; if (Object.values(prices).some(number => !Number.isFinite(number) || number < 0)) return tell('Enter a non-negative price for every grade.', true); const payload = JSON.stringify(prices); localStorage.setItem('tunaeye-prices', payload); queueSqliteState('tunaeye-prices', payload); Object.assign((w as Window & { eval: (s: string) => any }).eval('RATE'), prices); audit('Prices updated', 'Local price schedule saved'); try { await syncPriceSchedule(prices); tell('Price schedule saved and verified in cloud') } catch (e) { tell(`Prices saved locally. ${e instanceof Error ? e.message : 'Cloud sync unavailable.'}`, true) } })
+  bind('ea-settings-save', () => { const endpoint = value('ea-api'), camera = value('ea-camera'); for (const url of [endpoint, camera]) if (url && !/^https?:\/\/[^\s]+$/i.test(url)) return tell('Use a valid HTTP or HTTPS device URL.', true); if (!value('ea-station')) return tell('Enter a station name.', true); localStorage.setItem('tunaeye-station', value('ea-station')); queueSqliteState('tunaeye-station', value('ea-station')); localStorage.setItem('tunaeye-rpi-url', endpoint); localStorage.setItem('tunaeye-camera-url', camera); localStorage.setItem('tunaeye-model-name', value('ea-model')); Object.assign(state.cfg, { name: value('ea-station'), url: endpoint, model: value('ea-model') }); audit('Settings updated', 'Station and Pi connection settings saved'); tell('Station settings saved') })
   bind('ea-pi-test', async () => { const status = get('ea-device-status'); if (status) status.textContent = 'Checking Pi…'; try { const result = await checkPiHealth(); if (status) status.textContent = `Pi reachable · ${result.model ?? result.service ?? 'Status endpoint answered'}`; audit('Pi connection test', 'Status endpoint reachable') } catch (e) { if (status) status.textContent = e instanceof Error ? e.message : 'Pi unavailable'; audit('Pi connection test', 'Pi unavailable') } })
   bind('ea-camera-test', async () => { const status = get('ea-device-status'); if (status) status.textContent = 'Checking snapshot…'; try { const image = await capturePiImage(); if (status) status.textContent = `Camera returned ${image.size.toLocaleString()} image bytes`; audit('Camera diagnostic', 'Snapshot returned') } catch (e) { if (status) status.textContent = e instanceof Error ? e.message : 'Camera unavailable' } })
   bind('ea-retention', () => {

@@ -76,6 +76,11 @@ class PersistenceTests(unittest.TestCase):
             self.execute('GET', '/local-api/health')
         self.assertEqual(self.execute('GET', '/local-api/records'), {'records': []})
 
+    def test_station_state_persists_across_restarts(self):
+        self.assertEqual(self.execute('POST', '/local-api/state', {'key': 'tunaeye-expert-graders-v1', 'value': '[{"name":"Maria Santos"}]'}), {'saved': 'tunaeye-expert-graders-v1'})
+        result = subprocess.run([sys.executable, str(SCRIPT), '--request', '--database', self.database], input=json.dumps({'method': 'GET', 'path': '/local-api/state'}), text=True, capture_output=True, check=True)
+        self.assertEqual(json.loads(result.stdout)['state']['tunaeye-expert-graders-v1'], '[{"name":"Maria Santos"}]')
+
     def test_http_rejects_cross_origin_access(self):
         with socket.socket() as reservation:
             reservation.bind(('127.0.0.1', 0)); port = reservation.getsockname()[1]

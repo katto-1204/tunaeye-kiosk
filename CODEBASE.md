@@ -16,20 +16,20 @@ Local-first grading station for tuna sashibo. The React app runs in a browser or
 
 One fish. Sashibo core is always the main sample. The grader does not pick a sample type, confirm “same fish,” or step through the tutorial before capture. Those older screens still exist for direct links.
 
-1. Enter the grader name, or start from the grader dashboard.
+1. Enter the operator name, or start from the grader dashboard.
 2. Enter the fish weight (15–200 kg).
-3. Capture the sashibo core. The image is saved and graded immediately.
-4. Confidence gate at **80%**:
-   - **80% or above:** that predicted grade is final. The next action is **Print receipt**.
-   - **Below 80%:** capture a tail-cut sample.
-5. Tail-cut gate at **80%**:
-   - **80% or above:** blend both model score vectors (`GRADE_A`, `GRADE_B`, `GRADE_C`). The class with the higher average score is the final grade, then print.
-   - **Below 80%:** an expert must set the grade. Saving that override opens the receipt.
-6. One thermal receipt for the fish, then the session is done.
+3. Capture the sashibo core (with Food Safety notice shown in the scanning footer). The image is saved and graded immediately.
+4. Confidence gate at **75%** (`ACCEPT_CONFIDENCE = 75` in `src/kioskState.ts`):
+   - **75% or above (Grade A or B):** that predicted grade is final. The next action is **Print receipt**.
+   - **Below 75% or Grade C:** prompt for a tail-cut sample (or continue provisionally if unavailable).
+5. Tail-cut gate at **75%**:
+   - **Agreement or 1-tier blend at 75%+ average:** blend both model score vectors (`GRADE_A`, `GRADE_B`, `GRADE_C`) and print.
+   - **Below 75% average or A-vs-C disagreement:** display the normal Grade card with a **FLAGGED FOR MANUAL OVERRIDE** chip so an operator can call an Admin-registered Expert Grader (personal 4-digit PIN + optional 100% offline TOTP 2FA).
+6. One 58mm thermal receipt for the fish (with visual-assist food-safety footer), then the session is done.
 
 Invalid images (the model class `INVALID`) ask for a retake instead of a tail cut or a blend.
 
-The rule lives in `decisionFor()` in `src/kioskState.ts`. The Pi client still reports its own `valid` / `uncertain` / `invalid` outcome. The 80% gate is separate from that older 70% uncertain cutoff.
+The rule lives in `decisionFor()` in `src/kioskState.ts`. Active entrypoint is `src/main.tsx` → `launchExactUI()` in `src/exact-ui.ts` (while `src/App.tsx` remains as legacy reference). Local durability mirrors records, evidence, expert graders, PIN/2FA config, prices, and audit logs to SQLite WAL (`server/station.py`) and syncs records + audit logs to Supabase when online.
 
 ## Demo mode
 

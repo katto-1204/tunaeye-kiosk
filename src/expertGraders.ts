@@ -1,4 +1,6 @@
 import { createId } from './id'
+import { hashRecoveryCode, verifyTotpCode } from './offlineTotp'
+import { queueSqliteState } from './sqliteStore'
 
 export interface ExpertGrader {
   id: string
@@ -6,6 +8,9 @@ export interface ExpertGrader {
   salt: string
   pinHash: string
   algo: 'pbkdf2' | 'fnv'
+  totpEnabled?: boolean
+  totpSecret?: string
+  recoveryCodeHashes?: string[]
   createdAt: number
 }
 
@@ -69,7 +74,9 @@ function readRaw(): ExpertGrader[] | null {
 }
 
 function writeRaw(list: ExpertGrader[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(list))
+  const payload = JSON.stringify(list)
+  localStorage.setItem(STORAGE_KEY, payload)
+  queueSqliteState(STORAGE_KEY, payload)
 }
 
 let seedPromise: Promise<ExpertGrader[]> | null = null
@@ -136,6 +143,46 @@ export async function registerExpertGrader(name: string, pin: string): Promise<E
 export async function removeExpertGrader(id: string): Promise<void> {
   const current = await ensureSeededExpertGraders()
   writeRaw(current.filter(item => item.id !== id))
+}
+
+export async function enableExpertTotp(graderId: string, secret: string, verificationCode: string, recoveryCodes: string[]): Promise<ExpertGrader> {
+  const current = await ensureSeededExpertGraders()
+  const grader = current.find(item => item.id === graderId)
+  if (!grader) throw new Error('Expert grader not found.')
+  if (!verifyTotpCode(secret, verificationCode, 1)) {
+    throw new Error('The 6-digit authenticator code did not match. Check your phone clock and try again.')
+  }
+  const cleanSecret = secret.toUpperCase().replace(/[^A-Z2-7]/g, '')
+  const recoveryCodeHashes = recoveryCodes.map(code => hashRecoveryCode(code, grader.salt))
+  const updated: ExpertGrader = { ...grader, totpEnabled: true, totpSecret: cleanSecret, recoveryCodeHashes }
+  writeRaw(current.map(item => (item.id === graderId ? updated : item)))
+  return updated
+}
+
+export async function disableExpertTotp(graderId: string): Promise<void> {
+  const current = await ensureSeededExpertGraders()
+  writeRaw(current.map(item => (item.id === graderId ? { ...item, totpEnabled: false, totpSecret: undefined, recoveryCodeHashes: [] } : item)))
+}
+
+export async function verifyExpertSecondFactor(graderId: string, codeInput: string): Promise<{ ok: boolean; method?: 'totp' | 'recovery'; remainingRecovery?: number; error?: string }> {
+  const list = await ensureSeededExpertGraders()
+  const grader = list.find(item => item.id === graderId)
+  if (!grader) return { ok: false, error: 'Expert grader not found.' }
+  if (!grader.totpEnabled || !grader.totpSecret) return { ok: true }
+  const trimmed = codeInput.trim()
+  if (!trimmed) return { ok: false, error: `Enter the 6-digit offline 2FA code (or a recovery code) for ${grader.name}.` }
+  if (verifyTotpCode(grader.totpSecret, trimmed, 1)) {
+    return { ok: true, method: 'totp' }
+  }
+  const candidateHash = hashRecoveryCode(trimmed, grader.salt)
+  const hashes = grader.recoveryCodeHashes ?? []
+  const matchIdx = hashes.indexOf(candidateHash)
+  if (matchIdx >= 0) {
+    const nextHashes = hashes.filter((_, idx) => idx !== matchIdx)
+    writeRaw(list.map(item => (item.id === graderId ? { ...item, recoveryCodeHashes: nextHashes } : item)))
+    return { ok: true, method: 'recovery', remainingRecovery: nextHashes.length }
+  }
+  return { ok: false, error: `Invalid 6-digit 2FA or recovery code for ${grader.name}.` }
 }
 
 type AttemptMap = Record<string, { failures: number; until: number }>
